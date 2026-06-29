@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, where, or } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 // Your exact configuration block
@@ -20,7 +20,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// DOM Mapping
+// DOM Elements
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
 const authForm = document.getElementById('auth-form');
@@ -34,17 +34,35 @@ const chatForm = document.getElementById('chat-form');
 const messageInput = document.getElementById('message-input');
 const mediaInput = document.getElementById('media-input');
 const chatMessages = document.getElementById('chat-messages');
+const myProfileDisplay = document.getElementById('my-profile-display');
+const myAvatar = document.getElementById('my-avatar');
 const myDisplayName = document.getElementById('my-display-name');
 const currentRoomTitle = document.getElementById('current-room-title');
 const targetPublicBtn = document.getElementById('target-public');
 const usersList = document.getElementById('users-list');
 
+// Modals
+const profileModal = document.getElementById('profile-modal');
+const closeProfileModal = document.getElementById('close-profile-modal');
+const viewProfileAvatar = document.getElementById('view-profile-avatar');
+const viewProfileName = document.getElementById('view-profile-name');
+const viewProfileEmail = document.getElementById('view-profile-email');
+const viewProfileStatus = document.getElementById('view-profile-status');
+
+const settingsModal = document.getElementById('settings-modal');
+const closeSettingsModal = document.getElementById('close-settings-modal');
+const settingsForm = document.getElementById('settings-form');
+const settingsAvatarInput = document.getElementById('settings-avatar-input');
+const settingsNameInput = document.getElementById('settings-name-input');
+const settingsStatusInput = document.getElementById('settings-status-input');
+
 let isSignUpMode = false;
 let currentUser = null;
-let currentChatMode = "public"; // Can be "public" or an email address string for DMs
+let currentChatMode = "public"; 
 let unsubscribeChat = null;
+const defaultAvatar = "https://via.placeholder.com/100";
 
-// Toggle Login / Signup UI view
+// Toggle Login / Signup
 toggleLink.addEventListener('click', () => {
     isSignUpMode = !isSignUpMode;
     submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
@@ -55,7 +73,7 @@ toggleLink.addEventListener('click', () => {
     document.getElementById('toggle-link').addEventListener('click', () => toggleLink.click());
 });
 
-// Authentication handlers
+// Auth Handlers
 authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = emailInput.value.trim();
@@ -65,12 +83,14 @@ authForm.addEventListener('submit', async (e) => {
     try {
         if (isSignUpMode) {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            await updateProfile(userCredential.user, { displayName: name || email.split('@')[0] });
-            // Save profile details in Firestore
-            await setDoc(doc(db, "users", userCredential.user.uid), {
+            const fallbackName = name || email.split('@')[0];
+            await updateProfile(userCredential.user, { displayName: fallbackName, photoURL: defaultAvatar });
+            await setDoc(doc(db, "users", email), {
                 uid: userCredential.user.uid,
-                displayName: userCredential.user.displayName,
-                email: email
+                displayName: fallbackName,
+                email: email,
+                photoURL: defaultAvatar,
+                status: "Hey there! I am using AcmeMes."
             });
         } else {
             await signInWithEmailAndPassword(auth, email, password);
@@ -82,13 +102,21 @@ authForm.addEventListener('submit', async (e) => {
 
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-// Handle Session State Channels
-onAuthStateChanged(auth, (user) => {
+// Session Routing
+onAuthStateChanged(async (user) => {
     if (user) {
         currentUser = user;
-        myDisplayName.textContent = user.displayName || user.email;
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
+        
+        // Sync custom profile changes
+        const userDoc = await getDoc(doc(db, "users", user.email));
+        if (userDoc.exists()) {
+            const data = userDoc.data();
+            myDisplayName.textContent = data.displayName || user.email;
+            myAvatar.src = data.photoURL || defaultAvatar;
+        }
+
         switchChannel("public");
         loadUsersDirectory();
     } else {
@@ -99,16 +127,16 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// Load all system users to generate the side DM list
+// Load Sidebar DM List
 async function loadUsersDirectory() {
     usersList.innerHTML = '';
     const querySnapshot = await getDocs(collection(db, "users"));
-    querySnapshot.forEach((doc) => {
-        const userData = doc.data();
+    querySnapshot.forEach((docSnap) => {
+        const userData = docSnap.data();
         if (userData.email !== currentUser.email) {
             const btn = document.createElement('button');
             btn.className = 'target-btn';
-            btn.textContent = `💬 ${userData.displayName || userData.email}`;
+            btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -131,14 +159,76 @@ function switchChannel(mode) {
     loadMessages();
 }
 
-// Media Upload Listener Alert feedback
-mediaInput.addEventListener('change', () => {
-    if(mediaInput.files[0]) {
-        messageInput.placeholder = `📎 File attached: ${mediaInput.files[0].name}`;
+// Open My Settings Panel
+myProfileDisplay.addEventListener('click', async () => {
+    const userDoc = await getDoc(doc(db, "users", currentUser.email));
+    if (userDoc.exists()) {
+        const data = userDoc.data();
+        settingsNameInput.value = data.displayName || '';
+        settingsStatusInput.value = data.status || '';
+    }
+    settingsModal.classList.remove('hidden');
+});
+
+// Save My Settings Changes
+settingsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newName = settingsNameInput.value.trim();
+    const newStatus = settingsStatusInput.value.trim();
+    const avatarFile = settingsAvatarInput.files[0];
+    
+    let photoURL = myAvatar.src;
+
+    try {
+        if (avatarFile) {
+            const avatarRef = ref(storage, `avatars/${currentUser.email}_${Date.now()}`);
+            const snap = await uploadBytes(avatarRef, avatarFile);
+            photoURL = await getDownloadURL(snap.ref);
+        }
+
+        await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
+        
+        await setDoc(doc(db, "users", currentUser.email), {
+            displayName: newName,
+            status: newStatus,
+            photoURL: photoURL,
+            email: currentUser.email,
+            uid: currentUser.uid
+        }, { merge: true });
+
+        myAvatar.src = photoURL;
+        myDisplayName.textContent = newName;
+        settingsModal.classList.add('hidden');
+        settingsForm.reset();
+        loadUsersDirectory(); // Refresh sidebar info
+        loadMessages(); // Refresh chat list views
+    } catch (err) {
+        alert("Error saving settings: " + err.message);
     }
 });
 
-// Dispatch Messaging & File Storage Routing
+// Open Public Profile View Cards
+async function showUserProfile(email) {
+    const userDoc = await getDoc(doc(db, "users", email));
+    if (userDoc.exists()) {
+        const data = userDoc.data();
+        viewProfileAvatar.src = data.photoURL || defaultAvatar;
+        viewProfileName.textContent = data.displayName || email;
+        viewProfileEmail.textContent = email;
+        viewProfileStatus.textContent = data.status || "No status set.";
+        profileModal.classList.remove('hidden');
+    }
+}
+
+// Close Modals UI clicks
+closeProfileModal.addEventListener('click', () => profileModal.classList.add('hidden'));
+closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+mediaInput.addEventListener('change', () => {
+    if(mediaInput.files[0]) messageInput.placeholder = `📎 File: ${mediaInput.files[0].name}`;
+});
+
+// Message Transmitter
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
@@ -150,17 +240,22 @@ chatForm.addEventListener('submit', async (e) => {
 
     try {
         if (file) {
-            messageInput.placeholder = "Uploading file, please wait...";
+            messageInput.placeholder = "Uploading media asset...";
             const fileRef = ref(storage, `chats/${Date.now()}_${file.name}`);
             const uploadSnapshot = await uploadBytes(fileRef, file);
             fileUrl = await getDownloadURL(uploadSnapshot.ref);
             fileType = file.type.startsWith('image/') ? 'image' : 'video';
         }
 
+        // Fetch up-to-date profile metadata directly from user's index document
+        const myDoc = await getDoc(doc(db, "users", currentUser.email));
+        const myData = myDoc.exists() ? myDoc.data() : {};
+
         const payload = {
             text: text,
             user: currentUser.email,
-            displayName: currentUser.displayName || currentUser.email,
+            displayName: myData.displayName || currentUser.email,
+            userAvatar: myData.photoURL || defaultAvatar,
             timestamp: serverTimestamp(),
             ...(fileUrl && { fileUrl, fileType })
         };
@@ -168,7 +263,6 @@ chatForm.addEventListener('submit', async (e) => {
         if (currentChatMode === "public") {
             await addDoc(collection(db, "messages"), payload);
         } else {
-            // Private DM routing setup mapping participants array
             payload.participants = [currentUser.email, currentChatMode];
             await addDoc(collection(db, "direct_messages"), payload);
         }
@@ -176,11 +270,11 @@ chatForm.addEventListener('submit', async (e) => {
         chatForm.reset();
         messageInput.placeholder = "Type a message or attach a file...";
     } catch (err) {
-        console.error("Error context dispatched: ", err);
+        console.error(err);
     }
 });
 
-// Unified Dynamic Query Downloader Room Listener
+// Live Event Stream Pipeline
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
     chatMessages.innerHTML = '';
@@ -198,10 +292,8 @@ function loadMessages() {
 
     unsubscribeChat = onSnapshot(q, (snapshot) => {
         chatMessages.innerHTML = '';
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            
-            // Client side sorting confirmation fallback layer for DM streams
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
             if (currentChatMode !== "public" && !data.participants.includes(currentChatMode)) return;
 
             const messageEl = document.createElement('div');
@@ -211,15 +303,25 @@ function loadMessages() {
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Image File">`
+                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Attached Image">`
                     : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
+            // Wrapping sender's tag info inside an interactive element to hook up Profile Viewer Card
             messageEl.innerHTML = `
-                <span class="msg-user">${data.displayName || data.user}</span>
+                <div class="msg-header-info" data-email="${data.user}">
+                    <img src="${data.userAvatar || defaultAvatar}" class="avatar-sm">
+                    <span class="msg-user">${data.displayName || data.user}</span>
+                </div>
                 <span class="msg-text">${escapeHTML(data.text || '')}</span>
                 ${mediaMarkup}
             `;
+
+            // Setup profile view trigger click on user header
+            messageEl.querySelector('.msg-header-info').addEventListener('click', (e) => {
+                showUserProfile(e.currentTarget.getAttribute('data-email'));
+            });
+
             chatMessages.appendChild(messageEl);
         });
         chatMessages.scrollTop = chatMessages.scrollHeight;
