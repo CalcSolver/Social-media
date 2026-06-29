@@ -23,7 +23,8 @@
         
         <aside class="sidebar">
             <div class="profile-header">
-                <div id="my-profile-display">
+                <div id="my-profile-display" style="cursor: pointer;">
+                    <img id="my-avatar" src="https://via.placeholder.com/40" alt="Avatar" class="avatar-sm">
                     <span id="my-display-name">Loading...</span>
                 </div>
                 <button id="logout-btn">Logout</button>
@@ -32,8 +33,7 @@
                 <button class="target-btn active" id="target-public">Global Chat</button>
                 <hr>
                 <h4>Direct Messages</h4>
-                <div id="users-list">
-                    </div>
+                <div id="users-list"></div>
             </div>
         </aside>
 
@@ -53,6 +53,32 @@
                 <button type="submit">Send</button>
             </form>
         </main>
+    </div>
+
+    <div id="profile-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" id="close-profile-modal">&times;</span>
+            <img id="view-profile-avatar" src="https://via.placeholder.com/100" class="avatar-lg">
+            <h3 id="view-profile-name">Username</h3>
+            <p id="view-profile-email">email@example.com</p>
+            <p id="view-profile-status"></p>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" id="close-settings-modal">&times;</span>
+            <h3>Edit Profile Settings</h3>
+            <form id="settings-form">
+                <label>Change Profile Picture:</label>
+                <input type="file" id="settings-avatar-input" accept="image/*">
+                <label>Change Username:</label>
+                <input type="text" id="settings-name-input" placeholder="New Username">
+                <label>Update Status/Bio:</label>
+                <input type="text" id="settings-status-input" placeholder="What's on your mind?">
+                <button type="submit">Save Changes</button>
+            </form>
+        </div>
     </div>
 
     <script type="module" src="app.js"></script>
