@@ -1,93 +1,130 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js";
+// 1. Direct CDN Imports (Required for GitHub Pages)
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-console.log("app.js loaded");
-
-// CONNECT TO SUPABASE
-const supabase = createClient(
-  "https://ipbjivlzlqztedqheuuk.supabase.co",
-  "sb_publishable_jORGoPruLE_OXsiuiQXTAQ_Nc08h8fK"
-);
-
-// SIGN UP
-window.signup = async function () {
-  console.log("signup called");
-
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-
-  const { data, error } = await supabase.auth.signUp({ email, password });
-
-  if (error) {
-    alert("Signup error: " + error.message);
-  } else {
-    alert("Signup successful! Now login.");
-  }
+// 2. Your exact Firebase configuration keys
+const firebaseConfig = {
+  apiKey: "AIzaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro",
+  authDomain: "acmemes-2a69e.firebaseapp.com",
+  projectId: "acmemes-2a69e",
+  storageBucket: "acmemes-2a69e.firebasestorage.app",
+  messagingSenderId: "547265374331",
+  appId: "1:547265374331:web:68c981e74fb208c2121ade",
+  measurementId: "G-RMFPJWJ2V1"
 };
 
-// LOGIN
-window.login = async function () {
-  console.log("login called");
+// 3. Initialize Firebase Services using your keys
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+// ==========================================
+// 4. UI Logic (DOM Elements)
+// ==========================================
+const authContainer = document.getElementById('auth-container');
+const chatContainer = document.getElementById('chat-container');
+const authForm = document.getElementById('auth-form');
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
+const submitBtn = document.getElementById('submit-btn');
+const toggleLink = document.getElementById('toggle-link');
+const logoutBtn = document.getElementById('logout-btn');
+const chatForm = document.getElementById('chat-form');
+const messageInput = document.getElementById('message-input');
+const chatMessages = document.getElementById('chat-messages');
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+let isSignUpMode = false;
+let currentUser = null;
 
-  if (error) {
-    alert("Login error: " + error.message);
-  } else {
-    alert("Login successful!");
-  }
-};
+// --- Authentication UI Toggling ---
+toggleLink.addEventListener('click', () => {
+    isSignUpMode = !isSignUpMode;
+    submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
+    document.getElementById('toggle-auth').innerHTML = isSignUpMode 
+        ? 'Already have an account? <span id="toggle-link">Login</span>'
+        : 'Don\'t have an account? <span id="toggle-link">Sign Up</span>';
+    document.getElementById('toggle-link').addEventListener('click', () => toggleLink.click());
+});
 
-// CREATE POST
-window.createPost = async function () {
-  console.log("createPost called");
+// --- Auth Operations ---
+authForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = emailInput.value;
+    const password = passwordInput.value;
 
-  const content = document.getElementById("postContent").value;
+    if (isSignUpMode) {
+        createUserWithEmailAndPassword(auth, email, password).catch(err => alert(err.message));
+    } else {
+        signInWithEmailAndPassword(auth, email, password).catch(err => alert(err.message));
+    }
+});
 
-  const { data: user } = await supabase.auth.getUser();
+logoutBtn.addEventListener('click', () => signOut(auth));
 
-  if (!user.user) {
-    alert("You must login first");
-    return;
-  }
+// --- Monitor Auth State Change ---
+let unsubscribeChat = null;
 
-  const { error } = await supabase
-    .from("posts")
-    .insert([{ user_id: user.user.id, content }]);
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        currentUser = user;
+        authContainer.classList.add('hidden');
+        chatContainer.classList.remove('hidden');
+        authForm.reset();
+        loadMessages();
+    } else {
+        currentUser = null;
+        authContainer.classList.remove('hidden');
+        chatContainer.classList.add('hidden');
+        if (unsubscribeChat) unsubscribeChat();
+        chatMessages.innerHTML = '';
+    }
+});
 
-  if (error) {
-    alert("Post error: " + error.message);
-  } else {
-    alert("Posted!");
-  }
-};
+// --- Send Messages ---
+chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = messageInput.value.trim();
+    if (!text) return;
 
-// LOAD POSTS
-window.getPosts = async function () {
-  console.log("getPosts called");
+    try {
+        await addDoc(collection(db, "messages"), {
+            text: text,
+            user: currentUser.email,
+            timestamp: serverTimestamp()
+        });
+        chatForm.reset();
+    } catch (err) {
+        console.error("Error sending message: ", err);
+    }
+});
 
-  const { data, error } = await supabase
-    .from("posts")
-    .select("*")
-    .order("created_at", { ascending: false });
+// --- Read Messages in Realtime ---
+function loadMessages() {
+    const q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(50));
+    
+    unsubscribeChat = onSnapshot(q, (snapshot) => {
+        chatMessages.innerHTML = '';
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const messageEl = document.createElement('div');
+            
+            const isSentByMe = data.user === currentUser.email;
+            messageEl.className = `msg ${isSentByMe ? 'sent' : 'received'}`;
+            
+            messageEl.innerHTML = `
+                <span class="msg-user">${data.user}</span>
+                <span class="msg-text">${escapeHTML(data.text || '')}</span>
+            `;
+            chatMessages.appendChild(messageEl);
+        });
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+}
 
-  if (error) {
-    alert("Load error: " + error.message);
-    return;
-  }
-
-  const feed = document.getElementById("feed");
-  feed.innerHTML = "";
-
-  data.forEach(post => {
-    const div = document.createElement("div");
-    div.className = "post";
-    div.textContent = post.content;
-    feed.appendChild(div);
-  });
-};
+// Simple security helper to escape text input
+function escapeHTML(str) {
+    return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+    );
+}
