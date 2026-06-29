@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Realtime Chat App</title>
+    <title>AcmeMes - Ultimate Chat</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div id="auth-container" class="container">
-        <h2>Welcome to ChatApp</h2>
+        <h2>Welcome to AcmeMes</h2>
         <form id="auth-form">
+            <input type="text" id="username" placeholder="Display Name (New Signups)" autocomplete="off">
             <input type="email" id="email" placeholder="Email Address" required>
             <input type="password" id="password" placeholder="Password" required>
             <button type="submit" id="submit-btn">Login</button>
@@ -18,19 +19,40 @@
         <p id="toggle-auth">Don't have an account? <span id="toggle-link">Sign Up</span></p>
     </div>
 
-    <div id="chat-container" class="container hidden">
-        <header>
-            <h3>Chat Room</h3>
-            <button id="logout-btn">Logout</button>
-        </header>
+    <div id="app-container" class="app-wrapper hidden">
         
-        <div id="chat-messages">
+        <aside class="sidebar">
+            <div class="profile-header">
+                <div id="my-profile-display">
+                    <span id="my-display-name">Loading...</span>
+                </div>
+                <button id="logout-btn">Logout</button>
             </div>
+            <div class="chat-targets">
+                <button class="target-btn active" id="target-public">Global Chat</button>
+                <hr>
+                <h4>Direct Messages</h4>
+                <div id="users-list">
+                    </div>
+            </div>
+        </aside>
 
-        <form id="chat-form">
-            <input type="text" id="message-input" placeholder="Type a message..." required autocomplete="off">
-            <button type="submit">Send</button>
-        </form>
+        <main class="chat-area">
+            <header id="chat-room-header">
+                <h3 id="current-room-title">Global Chat</h3>
+            </header>
+            
+            <div id="chat-messages"></div>
+
+            <form id="chat-form">
+                <label class="file-label">
+                    📁
+                    <input type="file" id="media-input" accept="image/*,video/*" style="display:none;">
+                </label>
+                <input type="text" id="message-input" placeholder="Type a message or attach a file..." required autocomplete="off">
+                <button type="submit">Send</button>
+            </form>
+        </main>
     </div>
 
     <script type="module" src="app.js"></script>
