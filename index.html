@@ -1,18 +1,28 @@
-<link rel="stylesheet" href="style.css">
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My Social App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-<div class="container">
-  <h1>My Social App</h1>
+  <div class="container">
+    <h1>My Social App</h1>
 
-  <input id="email" placeholder="Email">
-  <input id="password" placeholder="Password" type="password">
-  <button onclick="signup()">Sign Up</button>
+    <input id="email" placeholder="Email">
+    <input id="password" placeholder="Password" type="password">
 
-  <button onclick="login()">Login</button>
+    <button onclick="signup()">Sign Up</button>
+    <button onclick="login()">Login</button>
 
-  <input id="postContent" placeholder="Write a post...">
-  <button onclick="createPost()">Post</button>
+    <input id="postContent" placeholder="Write a post...">
+    <button onclick="createPost()">Post</button>
 
-  <button onclick="getPosts()">Load Posts</button>
-</div>
+    <button onclick="getPosts()">Load Posts</button>
+  </div>
 
-<div id="feed"></div>
+  <div id="feed"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
