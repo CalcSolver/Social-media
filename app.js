@@ -3,7 +3,6 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, si
 import { getFirestore, collection, addDoc, doc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-// Your exact configuration block
 const firebaseConfig = {
   apiKey: "AIzaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro",
   authDomain: "acmemes-2a69e.firebaseapp.com",
@@ -14,7 +13,6 @@ const firebaseConfig = {
   measurementId: "G-RMFPJWJ2V1"
 };
 
-// Initialization
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -39,6 +37,8 @@ const myDisplayName = document.getElementById('my-display-name');
 const currentRoomTitle = document.getElementById('current-room-title');
 const targetPublicBtn = document.getElementById('target-public');
 const usersList = document.getElementById('users-list');
+const searchUserInput = document.getElementById('search-user-input');
+const searchUserBtn = document.getElementById('search-user-btn');
 
 // Modals
 const profileModal = document.getElementById('profile-modal');
@@ -61,8 +61,8 @@ let currentUser = null;
 let currentChatMode = "public"; 
 let unsubscribeChat = null;
 const defaultAvatar = "https://via.placeholder.com/100";
+const userCache = {};
 
-// Toggle Login / Signup UI layout
 toggleLink.addEventListener('click', () => {
     isSignUpMode = !isSignUpMode;
     submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
@@ -72,10 +72,9 @@ toggleLink.addEventListener('click', () => {
     document.getElementById('toggle-link').addEventListener('click', () => toggleLink.click());
 });
 
-// Auth Operations
 authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = emailInput.value.trim();
+    const email = emailInput.value.trim().toLowerCase();
     const password = passwordInput.value;
 
     try {
@@ -100,22 +99,22 @@ authForm.addEventListener('submit', async (e) => {
 
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-// Session State Tracking Channel
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
         
-        const userDoc = await getDoc(doc(db, "users", user.email));
+        const userDoc = await getDoc(doc(db, "users", user.email.toLowerCase()));
         if (userDoc.exists()) {
             const data = userDoc.data();
             myDisplayName.textContent = data.displayName || user.email;
             myAvatar.src = data.photoURL || defaultAvatar;
+            userCache[user.email.toLowerCase()] = data;
         }
 
         switchChannel("public");
-        loadUsersDirectory();
+        loadActiveDMList();
     } else {
         currentUser = null;
         authContainer.classList.remove('hidden');
@@ -124,20 +123,38 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// Load Sidebar Directory List
-async function loadUsersDirectory() {
+// Sidebar search bar trigger
+searchUserBtn.addEventListener('click', async () => {
+    const searchEmail = searchUserInput.value.trim().toLowerCase();
+    if (!searchEmail) return;
+    if (searchEmail === currentUser.email.toLowerCase()) {
+        alert("You cannot search for yourself!");
+        return;
+    }
+    await showUserProfile(searchEmail);
+});
+
+// Helper: Generates a distinct direct message channel link string
+function getDMId(userA, userB) {
+    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("__").replace(/[@.]/g, '_');
+}
+
+// Loads previous dm conversations on the fly
+async function loadActiveDMList() {
     usersList.innerHTML = '';
     const querySnapshot = await getDocs(collection(db, "users"));
     querySnapshot.forEach((docSnap) => {
         const userData = docSnap.data();
-        if (userData.email !== currentUser.email) {
+        userCache[userData.email.toLowerCase()] = userData;
+        
+        if (userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
             const btn = document.createElement('button');
             btn.className = 'target-btn';
-            btn.id = `sidebar-${userData.email.replace(/[@.]/g, '-')}`;
+            btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
             btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
             btn.addEventListener('click', () => {
                 highlightSidebarBtn(btn);
-                switchChannel(userData.email);
+                switchChannel(userData.email.toLowerCase());
             });
             usersList.appendChild(btn);
         }
@@ -155,14 +172,13 @@ targetPublicBtn.addEventListener('click', () => {
 });
 
 function switchChannel(mode) {
-    currentChatMode = mode;
+    currentChatMode = mode.toLowerCase();
     currentRoomTitle.textContent = mode === "public" ? "Global Chat" : `Direct Message: ${mode}`;
     loadMessages();
 }
 
-// Settings Modal Management Panels
 myProfileDisplay.addEventListener('click', async () => {
-    const userDoc = await getDoc(doc(db, "users", currentUser.email));
+    const userDoc = await getDoc(doc(db, "users", currentUser.email.toLowerCase()));
     if (userDoc.exists()) {
         const data = userDoc.data();
         settingsNameInput.value = data.displayName || '';
@@ -171,7 +187,6 @@ myProfileDisplay.addEventListener('click', async () => {
     settingsModal.classList.remove('hidden');
 });
 
-// Canvas Image Compressor Function
 function compressAvatar(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -183,11 +198,9 @@ function compressAvatar(file) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 120;
                 canvas.height = 120;
-                const ctx = canvas.getContext('2d'); // Fixed from '2m'
+                const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, 120, 120);
-                canvas.toBlob((blob) => {
-                    resolve(blob);
-                }, 'image/jpeg', 0.7);
+                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
             };
         };
     });
@@ -198,55 +211,67 @@ settingsForm.addEventListener('submit', async (e) => {
     const newName = settingsNameInput.value.trim();
     const newStatus = settingsStatusInput.value.trim();
     const avatarFile = settingsAvatarInput.files[0];
-    
     let photoURL = myAvatar.src;
 
     try {
         if (avatarFile) {
             const compressedBlob = await compressAvatar(avatarFile);
-            const avatarRef = ref(storage, `avatars/${currentUser.email}_thumb.jpg`);
+            const avatarRef = ref(storage, `avatars/${currentUser.email.toLowerCase()}_thumb.jpg`);
             const snap = await uploadBytes(avatarRef, compressedBlob);
             photoURL = await getDownloadURL(snap.ref);
         }
 
         await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
         
-        await setDoc(doc(db, "users", currentUser.email), {
+        const userPayload = {
             displayName: newName,
             status: newStatus,
             photoURL: photoURL,
-            email: currentUser.email,
+            email: currentUser.email.toLowerCase(),
             uid: currentUser.uid
-        }, { merge: true });
+        };
+
+        await setDoc(doc(db, "users", currentUser.email.toLowerCase()), userPayload, { merge: true });
+        userCache[currentUser.email.toLowerCase()] = userPayload;
 
         myAvatar.src = photoURL;
         myDisplayName.textContent = newName;
         settingsModal.classList.add('hidden');
         settingsForm.reset();
-        loadUsersDirectory(); 
+        loadActiveDMList(); 
         loadMessages(); 
     } catch (err) {
         alert("Error saving settings: " + err.message);
     }
 });
 
-// Profile Modal View Setup
 async function showUserProfile(email) {
-    const userDoc = await getDoc(doc(db, "users", email));
-    if (userDoc.exists()) {
-        const data = userDoc.data();
+    email = email.toLowerCase();
+    let data = userCache[email];
+
+    if (!data) {
+        const userDoc = await getDoc(doc(db, "users", email));
+        if (userDoc.exists()) {
+            data = userDoc.data();
+            userCache[email] = data;
+        } else {
+            alert("No student registered with that email address!");
+            return;
+        }
+    }
+
+    if (data) {
         viewProfileAvatar.src = data.photoURL || defaultAvatar;
         viewProfileName.textContent = data.displayName || email;
         viewProfileEmail.textContent = email;
         viewProfileStatus.textContent = data.status || "No status set.";
         
-        // Clear previous event listeners
         const newDmBtn = dmStartBtn.cloneNode(true);
         dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
         
-        // Setup direct context click router action to open DM channel instantly
         newDmBtn.addEventListener('click', () => {
             profileModal.classList.add('hidden');
+            searchUserInput.value = '';
             const targetBtnId = `sidebar-${email.replace(/[@.]/g, '-')}`;
             const targetSidebarButton = document.getElementById(targetBtnId);
             highlightSidebarBtn(targetSidebarButton);
@@ -264,7 +289,6 @@ mediaInput.addEventListener('change', () => {
     if(mediaInput.files[0]) messageInput.placeholder = `📎 File: ${mediaInput.files[0].name}`;
 });
 
-// Message Submission Channel Router
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
@@ -276,19 +300,18 @@ chatForm.addEventListener('submit', async (e) => {
 
     try {
         if (file) {
-            messageInput.placeholder = "Uploading file asset...";
+            messageInput.placeholder = "Uploading meme asset...";
             const fileRef = ref(storage, `chats/${Date.now()}_${file.name}`);
             const uploadSnapshot = await uploadBytes(fileRef, file);
             fileUrl = await getDownloadURL(uploadSnapshot.ref);
             fileType = file.type.startsWith('image/') ? 'image' : 'video';
         }
 
-        const myDoc = await getDoc(doc(db, "users", currentUser.email));
-        const myData = myDoc.exists() ? myDoc.data() : {};
+        const myData = userCache[currentUser.email.toLowerCase()] || {};
 
         const payload = {
             text: text,
-            user: currentUser.email,
+            user: currentUser.email.toLowerCase(),
             displayName: myData.displayName || currentUser.email,
             userAvatar: myData.photoURL || defaultAvatar,
             timestamp: serverTimestamp(),
@@ -298,8 +321,9 @@ chatForm.addEventListener('submit', async (e) => {
         if (currentChatMode === "public") {
             await addDoc(collection(db, "messages"), payload);
         } else {
-            payload.participants = [currentUser.email, currentChatMode];
-            await addDoc(collection(db, "direct_messages"), payload);
+            // Write directly into the unique index-free room container path
+            const combinedRoomId = getDMId(currentUser.email, currentChatMode);
+            await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
         }
 
         chatForm.reset();
@@ -309,7 +333,6 @@ chatForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Live Data Pipeline Listener Room
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
     chatMessages.innerHTML = '';
@@ -318,34 +341,34 @@ function loadMessages() {
     if (currentChatMode === "public") {
         q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
     } else {
-        q = query(
-            collection(db, "direct_messages"), 
-            where("participants", "array-contains", currentUser.email),
-            orderBy("timestamp", "asc")
-        );
+        // Stream messages dynamically directly from the dedicated room subcollection path
+        const combinedRoomId = getDMId(currentUser.email, currentChatMode);
+        q = query(collection(db, "direct_messages", combinedRoomId, "messages"), orderBy("timestamp", "asc"));
     }
 
     unsubscribeChat = onSnapshot(q, (snapshot) => {
         chatMessages.innerHTML = '';
         snapshot.forEach((docSnap) => {
             const data = docSnap.data();
-            if (currentChatMode !== "public" && !data.participants.includes(currentChatMode)) return;
-
             const messageEl = document.createElement('div');
-            const isSentByMe = data.user === currentUser.email;
+            const isSentByMe = data.user === currentUser.email.toLowerCase();
             messageEl.className = `msg ${isSentByMe ? 'sent' : 'received'}`;
             
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Attached Image">`
+                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Meme">`
                     : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
+            const cachedUser = userCache[data.user.toLowerCase()] || {};
+            const finalName = cachedUser.displayName || data.displayName || data.user;
+            const finalAvatar = cachedUser.photoURL || data.userAvatar || defaultAvatar;
+
             messageEl.innerHTML = `
                 <div class="msg-header-info" data-email="${data.user}">
-                    <img src="${data.userAvatar || defaultAvatar}" class="avatar-sm">
-                    <span class="msg-user">${data.displayName || data.user}</span>
+                    <img src="${finalAvatar}" class="avatar-sm">
+                    <span class="msg-user">${finalName}</span>
                 </div>
                 <span class="msg-text">${escapeHTML(data.text || '')}</span>
                 ${mediaMarkup}
