@@ -60,7 +60,9 @@ let isSignUpMode = false;
 let currentUser = null;
 let currentChatMode = "public"; 
 let unsubscribeChat = null;
-const defaultAvatar = "https://via.placeholder.com/100";
+
+// Stable placeholder fallback avatar to bypass net::ERR_CONNECTION_CLOSED
+const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 
 toggleLink.addEventListener('click', () => {
@@ -111,6 +113,9 @@ onAuthStateChanged(auth, async (user) => {
             myDisplayName.textContent = data.displayName || user.email;
             myAvatar.src = data.photoURL || defaultAvatar;
             userCache[user.email.toLowerCase()] = data;
+        } else {
+            myDisplayName.textContent = user.email;
+            myAvatar.src = defaultAvatar;
         }
 
         switchChannel("public");
@@ -123,7 +128,7 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// Sidebar search bar trigger
+// Sidebar Search Button
 searchUserBtn.addEventListener('click', async () => {
     const searchEmail = searchUserInput.value.trim().toLowerCase();
     if (!searchEmail) return;
@@ -142,23 +147,27 @@ function getDMId(userA, userB) {
 // Loads previous dm conversations on the fly
 async function loadActiveDMList() {
     usersList.innerHTML = '';
-    const querySnapshot = await getDocs(collection(db, "users"));
-    querySnapshot.forEach((docSnap) => {
-        const userData = docSnap.data();
-        userCache[userData.email.toLowerCase()] = userData;
-        
-        if (userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
-            const btn = document.createElement('button');
-            btn.className = 'target-btn';
-            btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
-            btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
-            btn.addEventListener('click', () => {
-                highlightSidebarBtn(btn);
-                switchChannel(userData.email.toLowerCase());
-            });
-            usersList.appendChild(btn);
-        }
-    });
+    try {
+        const querySnapshot = await getDocs(collection(db, "users"));
+        querySnapshot.forEach((docSnap) => {
+            const userData = docSnap.data();
+            userCache[userData.email.toLowerCase()] = userData;
+            
+            if (userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
+                const btn = document.createElement('button');
+                btn.className = 'target-btn';
+                btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
+                btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
+                btn.addEventListener('click', () => {
+                    highlightSidebarBtn(btn);
+                    switchChannel(userData.email.toLowerCase());
+                });
+                usersList.appendChild(btn);
+            }
+        });
+    } catch (err) {
+        console.error("Error loading directory list: ", err);
+    }
 }
 
 function highlightSidebarBtn(activeButton) {
@@ -321,7 +330,6 @@ chatForm.addEventListener('submit', async (e) => {
         if (currentChatMode === "public") {
             await addDoc(collection(db, "messages"), payload);
         } else {
-            // Write directly into the unique index-free room container path
             const combinedRoomId = getDMId(currentUser.email, currentChatMode);
             await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
         }
@@ -341,7 +349,6 @@ function loadMessages() {
     if (currentChatMode === "public") {
         q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
     } else {
-        // Stream messages dynamically directly from the dedicated room subcollection path
         const combinedRoomId = getDMId(currentUser.email, currentChatMode);
         q = query(collection(db, "direct_messages", combinedRoomId, "messages"), orderBy("timestamp", "asc"));
     }
@@ -381,6 +388,8 @@ function loadMessages() {
             chatMessages.appendChild(messageEl);
         });
         chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, (error) => {
+        console.error("Snapshot error: ", error);
     });
 }
 
