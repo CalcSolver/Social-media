@@ -3,7 +3,7 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, si
 import { getFirestore, collection, addDoc, doc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-// Your exact configuration block
+// Your configuration block
 const firebaseConfig = {
   apiKey: "AIzaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro",
   authDomain: "acmemes-2a69e.firebaseapp.com",
@@ -47,6 +47,7 @@ const viewProfileAvatar = document.getElementById('view-profile-avatar');
 const viewProfileName = document.getElementById('view-profile-name');
 const viewProfileEmail = document.getElementById('view-profile-email');
 const viewProfileStatus = document.getElementById('view-profile-status');
+const dmStartBtn = document.getElementById('dm-start-btn');
 
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsModal = document.getElementById('close-settings-modal');
@@ -61,7 +62,7 @@ let currentChatMode = "public";
 let unsubscribeChat = null;
 const defaultAvatar = "https://via.placeholder.com/100";
 
-// Toggle Login / Signup UI layout adjustments
+// Toggle Login / Signup UI layout
 toggleLink.addEventListener('click', () => {
     isSignUpMode = !isSignUpMode;
     submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
@@ -71,7 +72,7 @@ toggleLink.addEventListener('click', () => {
     document.getElementById('toggle-link').addEventListener('click', () => toggleLink.click());
 });
 
-// Auth Handlers
+// Auth Operations
 authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = emailInput.value.trim();
@@ -80,7 +81,7 @@ authForm.addEventListener('submit', async (e) => {
     try {
         if (isSignUpMode) {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            const fallbackName = email.split('@')[0]; // Default fallback name derived from email
+            const fallbackName = email.split('@')[0];
             await updateProfile(userCredential.user, { displayName: fallbackName, photoURL: defaultAvatar });
             await setDoc(doc(db, "users", email), {
                 uid: userCredential.user.uid,
@@ -99,22 +100,18 @@ authForm.addEventListener('submit', async (e) => {
 
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-// Session Routing
+// Session State Tracking Channel
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
         
-        // Sync customizable profile indicators
         const userDoc = await getDoc(doc(db, "users", user.email));
         if (userDoc.exists()) {
             const data = userDoc.data();
             myDisplayName.textContent = data.displayName || user.email;
             myAvatar.src = data.photoURL || defaultAvatar;
-        } else {
-            myDisplayName.textContent = user.displayName || user.email;
-            myAvatar.src = user.photoURL || defaultAvatar;
         }
 
         switchChannel("public");
@@ -127,7 +124,7 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// Load Sidebar Directory layout
+// Load Sidebar Directory List
 async function loadUsersDirectory() {
     usersList.innerHTML = '';
     const querySnapshot = await getDocs(collection(db, "users"));
@@ -136,10 +133,10 @@ async function loadUsersDirectory() {
         if (userData.email !== currentUser.email) {
             const btn = document.createElement('button');
             btn.className = 'target-btn';
+            btn.id = `sidebar-${userData.email.replace(/[@.]/g, '-')}`;
             btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+                highlightSidebarBtn(btn);
                 switchChannel(userData.email);
             });
             usersList.appendChild(btn);
@@ -147,9 +144,13 @@ async function loadUsersDirectory() {
     });
 }
 
-targetPublicBtn.addEventListener('click', () => {
+function highlightSidebarBtn(activeButton) {
     document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('active'));
-    targetPublicBtn.classList.add('active');
+    if (activeButton) activeButton.classList.add('active');
+}
+
+targetPublicBtn.addEventListener('click', () => {
+    highlightSidebarBtn(targetPublicBtn);
     switchChannel("public");
 });
 
@@ -170,6 +171,28 @@ myProfileDisplay.addEventListener('click', async () => {
     settingsModal.classList.remove('hidden');
 });
 
+// Canvas Image Compressor Helper Function (Resize to 120x120px at low data payload size)
+function compressAvatar(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 120;
+                canvas.height = 120;
+                const ctx = canvas.getContext('2m');
+                canvas.getContext('2d').drawImage(img, 0, 0, 120, 120);
+                canvas.toBlob((blob) => {
+                    resolve(blob);
+                }, 'image/jpeg', 0.7); // 70% JPEG quality configuration
+            };
+        };
+    });
+}
+
 settingsForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const newName = settingsNameInput.value.trim();
@@ -180,8 +203,9 @@ settingsForm.addEventListener('submit', async (e) => {
 
     try {
         if (avatarFile) {
-            const avatarRef = ref(storage, `avatars/${currentUser.email}_${Date.now()}`);
-            const snap = await uploadBytes(avatarRef, avatarFile);
+            const compressedBlob = await compressAvatar(avatarFile);
+            const avatarRef = ref(storage, `avatars/${currentUser.email}_thumb.jpg`);
+            const snap = await uploadBytes(avatarRef, compressedBlob);
             photoURL = await getDownloadURL(snap.ref);
         }
 
@@ -206,7 +230,7 @@ settingsForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Public Card Profile Display Channels
+// Profile Modal View Setup
 async function showUserProfile(email) {
     const userDoc = await getDoc(doc(db, "users", email));
     if (userDoc.exists()) {
@@ -215,6 +239,20 @@ async function showUserProfile(email) {
         viewProfileName.textContent = data.displayName || email;
         viewProfileEmail.textContent = email;
         viewProfileStatus.textContent = data.status || "No status set.";
+        
+        // Clear previous event listeners from the button
+        const newDmBtn = dmStartBtn.cloneNode(true);
+        dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
+        
+        // Setup direct context click router action to open DM channel instantly
+        newDmBtn.addEventListener('click', () => {
+            profileModal.classList.add('hidden');
+            const targetBtnId = `sidebar-${email.replace(/[@.]/g, '-')}`;
+            const targetSidebarButton = document.getElementById(targetBtnId);
+            highlightSidebarBtn(targetSidebarButton);
+            switchChannel(email);
+        });
+
         profileModal.classList.remove('hidden');
     }
 }
@@ -226,7 +264,7 @@ mediaInput.addEventListener('change', () => {
     if(mediaInput.files[0]) messageInput.placeholder = `📎 File: ${mediaInput.files[0].name}`;
 });
 
-// Messaging Stream Router Pipeline
+// Message Submission Channel Router
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
@@ -265,13 +303,13 @@ chatForm.addEventListener('submit', async (e) => {
         }
 
         chatForm.reset();
-        messageInput.placeholder = "Type a message or attach a file...";
+        messageInput.placeholder = "Type a message or attach a file... ";
     } catch (err) {
         console.error(err);
     }
 });
 
-// Realtime Stream Intermediary
+// Live Data Pipeline Listener Room
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
     chatMessages.innerHTML = '';
