@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js";
 const supabase = createClient(
   "https://ipbjivlzlqztedqheuuk.supabase.co
 ",
-  "YOUR_SUPABASE_ANON_KEY"
+  "sb_publishable_jORGoPruLE_OXsiuiQXTAQ_Nc08h8fK
+"
 );
 
 window.signup = async function () {
