@@ -3,7 +3,7 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, si
 import { getFirestore, collection, addDoc, doc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-// Your configuration block
+// Your exact configuration block
 const firebaseConfig = {
   apiKey: "AIzaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro",
   authDomain: "acmemes-2a69e.firebaseapp.com",
@@ -171,7 +171,7 @@ myProfileDisplay.addEventListener('click', async () => {
     settingsModal.classList.remove('hidden');
 });
 
-// Canvas Image Compressor Helper Function (Resize to 120x120px at low data payload size)
+// Canvas Image Compressor Function
 function compressAvatar(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -183,11 +183,11 @@ function compressAvatar(file) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 120;
                 canvas.height = 120;
-                const ctx = canvas.getContext('2m');
-                canvas.getContext('2d').drawImage(img, 0, 0, 120, 120);
+                const ctx = canvas.getContext('2d'); // Fixed from '2m'
+                ctx.drawImage(img, 0, 0, 120, 120);
                 canvas.toBlob((blob) => {
                     resolve(blob);
-                }, 'image/jpeg', 0.7); // 70% JPEG quality configuration
+                }, 'image/jpeg', 0.7);
             };
         };
     });
@@ -240,7 +240,7 @@ async function showUserProfile(email) {
         viewProfileEmail.textContent = email;
         viewProfileStatus.textContent = data.status || "No status set.";
         
-        // Clear previous event listeners from the button
+        // Clear previous event listeners
         const newDmBtn = dmStartBtn.cloneNode(true);
         dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
         
@@ -303,7 +303,7 @@ chatForm.addEventListener('submit', async (e) => {
         }
 
         chatForm.reset();
-        messageInput.placeholder = "Type a message or attach a file... ";
+        messageInput.placeholder = "Type a message or attach a file...";
     } catch (err) {
         console.error(err);
     }
