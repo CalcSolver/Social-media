@@ -1,3 +1,4 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js";
 console.log("JS is working!");
 window.signup = async function () {
   const email = document.getElementById("email").value;
