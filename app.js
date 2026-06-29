@@ -24,7 +24,6 @@ const storage = getStorage(app);
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
 const authForm = document.getElementById('auth-form');
-const usernameInput = document.getElementById('username');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const submitBtn = document.getElementById('submit-btn');
@@ -62,11 +61,10 @@ let currentChatMode = "public";
 let unsubscribeChat = null;
 const defaultAvatar = "https://via.placeholder.com/100";
 
-// Toggle Login / Signup
+// Toggle Login / Signup UI layout adjustments
 toggleLink.addEventListener('click', () => {
     isSignUpMode = !isSignUpMode;
     submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
-    usernameInput.style.display = isSignUpMode ? "block" : "none";
     document.getElementById('toggle-auth').innerHTML = isSignUpMode 
         ? 'Already have an account? <span id="toggle-link">Login</span>'
         : 'Don\'t have an account? <span id="toggle-link">Sign Up</span>';
@@ -78,12 +76,11 @@ authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = emailInput.value.trim();
     const password = passwordInput.value;
-    const name = usernameInput.value.trim();
 
     try {
         if (isSignUpMode) {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            const fallbackName = name || email.split('@')[0];
+            const fallbackName = email.split('@')[0]; // Default fallback name derived from email
             await updateProfile(userCredential.user, { displayName: fallbackName, photoURL: defaultAvatar });
             await setDoc(doc(db, "users", email), {
                 uid: userCredential.user.uid,
@@ -103,18 +100,21 @@ authForm.addEventListener('submit', async (e) => {
 logoutBtn.addEventListener('click', () => signOut(auth));
 
 // Session Routing
-onAuthStateChanged(async (user) => {
+onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
         
-        // Sync custom profile changes
+        // Sync customizable profile indicators
         const userDoc = await getDoc(doc(db, "users", user.email));
         if (userDoc.exists()) {
             const data = userDoc.data();
             myDisplayName.textContent = data.displayName || user.email;
             myAvatar.src = data.photoURL || defaultAvatar;
+        } else {
+            myDisplayName.textContent = user.displayName || user.email;
+            myAvatar.src = user.photoURL || defaultAvatar;
         }
 
         switchChannel("public");
@@ -127,7 +127,7 @@ onAuthStateChanged(async (user) => {
     }
 });
 
-// Load Sidebar DM List
+// Load Sidebar Directory layout
 async function loadUsersDirectory() {
     usersList.innerHTML = '';
     const querySnapshot = await getDocs(collection(db, "users"));
@@ -159,7 +159,7 @@ function switchChannel(mode) {
     loadMessages();
 }
 
-// Open My Settings Panel
+// Settings Modal Management Panels
 myProfileDisplay.addEventListener('click', async () => {
     const userDoc = await getDoc(doc(db, "users", currentUser.email));
     if (userDoc.exists()) {
@@ -170,7 +170,6 @@ myProfileDisplay.addEventListener('click', async () => {
     settingsModal.classList.remove('hidden');
 });
 
-// Save My Settings Changes
 settingsForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const newName = settingsNameInput.value.trim();
@@ -200,14 +199,14 @@ settingsForm.addEventListener('submit', async (e) => {
         myDisplayName.textContent = newName;
         settingsModal.classList.add('hidden');
         settingsForm.reset();
-        loadUsersDirectory(); // Refresh sidebar info
-        loadMessages(); // Refresh chat list views
+        loadUsersDirectory(); 
+        loadMessages(); 
     } catch (err) {
         alert("Error saving settings: " + err.message);
     }
 });
 
-// Open Public Profile View Cards
+// Public Card Profile Display Channels
 async function showUserProfile(email) {
     const userDoc = await getDoc(doc(db, "users", email));
     if (userDoc.exists()) {
@@ -220,7 +219,6 @@ async function showUserProfile(email) {
     }
 }
 
-// Close Modals UI clicks
 closeProfileModal.addEventListener('click', () => profileModal.classList.add('hidden'));
 closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
@@ -228,7 +226,7 @@ mediaInput.addEventListener('change', () => {
     if(mediaInput.files[0]) messageInput.placeholder = `📎 File: ${mediaInput.files[0].name}`;
 });
 
-// Message Transmitter
+// Messaging Stream Router Pipeline
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
@@ -240,14 +238,13 @@ chatForm.addEventListener('submit', async (e) => {
 
     try {
         if (file) {
-            messageInput.placeholder = "Uploading media asset...";
+            messageInput.placeholder = "Uploading file asset...";
             const fileRef = ref(storage, `chats/${Date.now()}_${file.name}`);
             const uploadSnapshot = await uploadBytes(fileRef, file);
             fileUrl = await getDownloadURL(uploadSnapshot.ref);
             fileType = file.type.startsWith('image/') ? 'image' : 'video';
         }
 
-        // Fetch up-to-date profile metadata directly from user's index document
         const myDoc = await getDoc(doc(db, "users", currentUser.email));
         const myData = myDoc.exists() ? myDoc.data() : {};
 
@@ -274,7 +271,7 @@ chatForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Live Event Stream Pipeline
+// Realtime Stream Intermediary
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
     chatMessages.innerHTML = '';
@@ -307,7 +304,6 @@ function loadMessages() {
                     : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
-            // Wrapping sender's tag info inside an interactive element to hook up Profile Viewer Card
             messageEl.innerHTML = `
                 <div class="msg-header-info" data-email="${data.user}">
                     <img src="${data.userAvatar || defaultAvatar}" class="avatar-sm">
@@ -317,7 +313,6 @@ function loadMessages() {
                 ${mediaMarkup}
             `;
 
-            // Setup profile view trigger click on user header
             messageEl.querySelector('.msg-header-info').addEventListener('click', (e) => {
                 showUserProfile(e.currentTarget.getAttribute('data-email'));
             });
