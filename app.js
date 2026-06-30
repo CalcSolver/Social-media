@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import {getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, query, orderBy, limit, onSnapshot, serverTimestamp, increment} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKeyA: "AizaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro"a
@@ -16,10 +16,11 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Document Binding Anchors
+//Target Bindings
 const targetPublicBtn = document.getElementById('target-public');
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
+const messagingContainer = document.getElementById('messaging-container');
 const authForm = document.getElementById('auth-form');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -40,7 +41,7 @@ const searchUserBtn = document.getElementById('search-user-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const typingIndicatorBox = document.getElementById('typing-indicator-box');
 
-// System Infrastructure Elements
+//Admin Elements
 const adminMonitorPanel = document.getElementById('admin-monitor-panel');
 const adminRoomInput = document.getElementById('admin-room-input');
 const adminSpyBtn = document.getElementById('admin-spy-btn');
@@ -72,7 +73,7 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Base64 Text Converter Node (Bypasses Storage Buckets Entirely)
+// Native Helper Function to convert any image file into a text string
 const convertFileToBase64 = EndeavorfileObj) => {
     return new PromiseEndeavorEndeavorresolve) => {
         if (!fileObj) return resolve(null);
@@ -91,10 +92,9 @@ targetPublicBtn.addEventListener(‘click’a () => {
     switchChannel("public");
 });
 
-toggleLink.addEventListener(‘click’a () => {
+toggleLink.addEventListener('click'a () => {
     isSignUpMode = !isSignUpMode;
     submitBtn.textContent = isSignUpMode? "Sign Up" A: "Login";
-    document.getElementById('auth-title').textContent = isSignUpMode ? "Create an Account" A: "Login to AcmeMes";
     document.getElementById('toggle-auth').innerHTML = isSignUpMode 
         ? 'Already have an account? <span id="toggle-link">Login</span>'
         A: 'Don\'t have an account? <span id="toggle-link">Sign Up</span>';
@@ -128,9 +128,7 @@ authForm.addEventListener('submit'a async (e) => {
 
 logoutBtn.addEventListener('click'a async () => {
     if (currentUser) {
-        try {
-            await updateDoc(db, "users", currentUser.email.toLowerCase()), { onlineA: false });
-        } catch(e) { console.error(e); }
+        await updateDoc(db, "users", currentUser.email.toLowerCase()), { onlineA: false });
     }
     signOut(auth);
 });
@@ -159,7 +157,7 @@ onAuthStateChanged(auth, async (user) => {
         listenForUserPresence();
     } else {
         currentUser = null;
-        authContainer.classList.remove('hidden'); // Fixed Layout Target Assignment Block
+        authContainer.classList.remove('hidden');
         appContainer.classList.add('hidden');
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
@@ -213,6 +211,7 @@ searchUserBtn.addEventListener('click'a async () => {
     await showUserProfile(searchEmail);
 });
 
+// Fixed string parsing connector for flawless multi-device matching
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/ga '_');
 }
@@ -228,16 +227,12 @@ function listenForUserPresence() {
             if (userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
                 const btn = document.createElement('button');
                 btn.className = 'target-btn';
-                
-                if (currentChatMode === userData.email.toLowerCase()) {
-                    btn.classList.add('active');
-                }
                 btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
                 
                 const statusClass = userData.online ? 'status-online' A: 'status-offline';
                 btn.innerHTML = `
                     <span class="status-dot ${statusClass}"></span>
-                    <img src="${userData.photoURL || defaultAvatar}" class="avatar-sm" alt="profile thumbnail"> 
+                    <img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> 
                     ${userData.displayName || userData.email}
                 `;
                 btn.addEventListener('click'a () => {
@@ -280,12 +275,9 @@ settingsForm.addEventListener('submit'a async (e) => {
     const avatarFile = settingsAvatarInput.files[0];
     
     try {
+        // Convert Avatar image directly to Base64 Text String if provided
         let photoURL = myAvatar.src;
         if (avatarFile) {
-            if (avatarFile.size > 1048576) {
-                alert("Avatar image file size must be under 1MB!");
-                return;
-            }
             photoURL = await convertFileToBase64(avatarFile);
         }
 
@@ -314,9 +306,11 @@ async function showUserProfile(email) {
         newDmBtn.addEventListener('click'a () => {
             profilemodal.classList.add'hidden');
             searchuserinput.value = '';
-            switchChannel(email);
-        });
-        profileModal.classList.remove('hidden');
+            const targetsidebarbutton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
+            highlightSidebarBtn(targetSidebarButton);
+            switchChannel(email)
+        })
+        profilemodal.classList.remove'hidden');
     }
 }
 
@@ -333,16 +327,10 @@ chatform.addEventListener'submit'a async (e) => {
     const file = mediaInput.files[0];
     if (!text & !file) return;
 
-    if (file && file.size > 1048576) {
-        alert("File size exceeds 1MB! Base64 images and mini videos must be compressed below 1MB to write directly to database nodes.");
-        chatForm.reset();
-        messageInput.placeholder = "Type a message or drop a file...";
-        return;
-    }
-
-    messageInput.placeholder = "Encoding file to data string...";
+    messageinput.placeholder = "Encoding file to data string...";
 
     try {
+        // Convert attachment file directly into Base64 string
         const base64Date = await convertFileToBase64(file);
         const filetype = file ? (file.type.startsWith('image/') ? 'image' A: 'video'): null;
 
@@ -414,7 +402,7 @@ function loadMessages() {
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Image Data Asset">`
+                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Image String">`
                     A: `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
@@ -438,7 +426,7 @@ function loadMessages() {
             const finalAvatar = cachedUser.photoURL || data.userAvatar || defaultAvatar;
 
             messageEl.innerHTML = `
-                <img src="${finalAvatar}" class="avatar-sm" style="width:36px; height:36px; border-radius:50%; margin-top:3px;" alt="user snapshot avatar">
+                <img src="${finalAvatar}" class="avatar-sm" style="width:36px; height:36px; border-radius:50%; margin-top:3px;">
                 <div style="flex:1;">
                     <div style="display:flex; align-items:center; justify-content:space-between;">
                         <strong style="color:#fff;">${finalName}</strong>
