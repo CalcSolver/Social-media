@@ -40,6 +40,19 @@ const usersList = document.getElementById('users-list');
 const searchUserInput = document.getElementById('search-user-input');
 const searchUserBtn = document.getElementById('search-user-btn');
 
+// View Panel Switching Components
+const viewChatBtn = document.getElementById('view-chat-btn');
+const viewFeedBtn = document.getElementById('view-feed-btn');
+const messagingContainer = document.getElementById('messaging-container');
+const memeFeedContainer = document.getElementById('meme-feed-container');
+
+// Feed Elements
+const feedPostForm = document.getElementById('feed-post-form');
+const postCaptionInput = document.getElementById('post-caption-input');
+const feedMediaInput = document.getElementById('feed-media-input');
+const feedFileChosen = document.getElementById('feed-file-chosen');
+const feedPostsStream = document.getElementById('feed-posts-stream');
+
 // Modals
 const profileModal = document.getElementById('profile-modal');
 const closeProfileModal = document.getElementById('close-profile-modal');
@@ -60,10 +73,33 @@ let isSignUpMode = false;
 let currentUser = null;
 let currentChatMode = "public"; 
 let unsubscribeChat = null;
+let unsubscribeFeed = null;
 
-// Stable placeholder fallback avatar to bypass net::ERR_CONNECTION_CLOSED
+// Stable, high-uptime placeholder asset fallback link
 const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
+
+// View Switching Handlers
+viewChatBtn.addEventListener('click', () => {
+    viewChatBtn.classList.add('active');
+    viewFeedBtn.classList.remove('active');
+    messagingContainer.style.display = "flex";
+    memeFeedContainer.classList.add('hidden');
+    if (currentChatMode === "public") {
+        currentRoomTitle.textContent = "Global Chat";
+    } else {
+        currentRoomTitle.textContent = `Direct Message: ${currentChatMode}`;
+    }
+});
+
+viewFeedBtn.addEventListener('click', () => {
+    viewFeedBtn.classList.add('active');
+    viewChatBtn.classList.remove('active');
+    messagingContainer.style.display = "none";
+    memeFeedContainer.classList.remove('hidden');
+    currentRoomTitle.textContent = "Public Meme Feed";
+    loadMemeFeed();
+});
 
 toggleLink.addEventListener('click', () => {
     isSignUpMode = !isSignUpMode;
@@ -125,10 +161,11 @@ onAuthStateChanged(auth, async (user) => {
         authContainer.classList.remove('hidden');
         appContainer.classList.add('hidden');
         if (unsubscribeChat) unsubscribeChat();
+        if (unsubscribeFeed) unsubscribeFeed();
     }
 });
 
-// Sidebar Search Button
+// Sidebar Explicit Email Search Interface Execution
 searchUserBtn.addEventListener('click', async () => {
     const searchEmail = searchUserInput.value.trim().toLowerCase();
     if (!searchEmail) return;
@@ -139,12 +176,11 @@ searchUserBtn.addEventListener('click', async () => {
     await showUserProfile(searchEmail);
 });
 
-// Helper: Generates a distinct direct message channel link string
+// Helper: Generates a deterministic combined key string skipping index operations
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("__").replace(/[@.]/g, '_');
 }
 
-// Loads previous dm conversations on the fly
 async function loadActiveDMList() {
     usersList.innerHTML = '';
     try {
@@ -159,6 +195,7 @@ async function loadActiveDMList() {
                 btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
                 btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
                 btn.addEventListener('click', () => {
+                    viewChatBtn.click(); // Ensure messaging tab opens
                     highlightSidebarBtn(btn);
                     switchChannel(userData.email.toLowerCase());
                 });
@@ -166,7 +203,7 @@ async function loadActiveDMList() {
             }
         });
     } catch (err) {
-        console.error("Error loading directory list: ", err);
+        console.error("Error building dashboard: ", err);
     }
 }
 
@@ -176,6 +213,7 @@ function highlightSidebarBtn(activeButton) {
 }
 
 targetPublicBtn.addEventListener('click', () => {
+    viewChatBtn.click();
     highlightSidebarBtn(targetPublicBtn);
     switchChannel("public");
 });
@@ -278,9 +316,12 @@ async function showUserProfile(email) {
         const newDmBtn = dmStartBtn.cloneNode(true);
         dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
         
+        // Context profile action connector router
         newDmBtn.addEventListener('click', () => {
             profileModal.classList.add('hidden');
             searchUserInput.value = '';
+            viewChatBtn.click(); // Bring messaging into clear workspace view frame
+            
             const targetBtnId = `sidebar-${email.replace(/[@.]/g, '-')}`;
             const targetSidebarButton = document.getElementById(targetBtnId);
             highlightSidebarBtn(targetSidebarButton);
@@ -298,6 +339,11 @@ mediaInput.addEventListener('change', () => {
     if(mediaInput.files[0]) messageInput.placeholder = `📎 File: ${mediaInput.files[0].name}`;
 });
 
+feedMediaInput.addEventListener('change', () => {
+    if(feedMediaInput.files[0]) feedFileChosen.textContent = feedMediaInput.files[0].name;
+});
+
+// Main Message Submitter Panel Router
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
@@ -309,7 +355,7 @@ chatForm.addEventListener('submit', async (e) => {
 
     try {
         if (file) {
-            messageInput.placeholder = "Uploading meme asset...";
+            messageInput.placeholder = "Uploading file asset...";
             const fileRef = ref(storage, `chats/${Date.now()}_${file.name}`);
             const uploadSnapshot = await uploadBytes(fileRef, file);
             fileUrl = await getDownloadURL(uploadSnapshot.ref);
@@ -341,6 +387,7 @@ chatForm.addEventListener('submit', async (e) => {
     }
 });
 
+// Stream Processor: Messages Framework Pipeline
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
     chatMessages.innerHTML = '';
@@ -364,7 +411,7 @@ function loadMessages() {
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Meme">`
+                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Meme Attachment">`
                     : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
@@ -390,6 +437,76 @@ function loadMessages() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }, (error) => {
         console.error("Snapshot error: ", error);
+    });
+}
+
+// Feed Submitter Handler Module
+feedPostForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const caption = postCaptionInput.value.trim();
+    const file = feedMediaInput.files[0];
+    if (!file) return;
+
+    try {
+        postCaptionInput.placeholder = "Uploading to public feed...";
+        const storageRef = ref(storage, `feeds/${Date.now()}_${file.name}`);
+        const snap = await uploadBytes(storageRef, file);
+        const imageUrl = await getDownloadURL(snap.ref);
+
+        const myData = userCache[currentUser.email.toLowerCase()] || {};
+
+        await addDoc(collection(db, "posts"), {
+            caption: caption,
+            imageUrl: imageUrl,
+            user: currentUser.email.toLowerCase(),
+            displayName: myData.displayName || currentUser.email,
+            userAvatar: myData.photoURL || defaultAvatar,
+            timestamp: serverTimestamp(),
+            likes: 0
+        });
+
+        feedPostForm.reset();
+        feedFileChosen.textContent = "No file selected";
+    } catch (err) {
+        alert("Error creating feed post: " + err.message);
+    }
+});
+
+// Stream Processor: Chronological Public Feed Pipeline
+function loadMemeFeed() {
+    if (unsubscribeFeed) unsubscribeFeed();
+    
+    const q = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(25));
+    
+    unsubscribeFeed = onSnapshot(q, (snapshot) => {
+        feedPostsStream.innerHTML = '';
+        snapshot.forEach((docSnap) => {
+            const post = docSnap.data();
+            const postCard = document.createElement('div');
+            postCard.className = 'meme-post-card';
+            postCard.style = "background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);";
+
+            const cachedUser = userCache[post.user.toLowerCase()] || {};
+            const finalName = cachedUser.displayName || post.displayName || post.user;
+            const finalAvatar = cachedUser.photoURL || post.userAvatar || defaultAvatar;
+
+            postCard.innerHTML = `
+                <div class="post-user-header" style="display:flex; align-items:center; margin-bottom:10px; cursor:pointer;" data-email="${post.user}">
+                    <img src="${finalAvatar}" class="avatar-sm" style="margin-right:10px; width:35px; height:35px; border-radius:50%;">
+                    <strong>${finalName}</strong>
+                </div>
+                <p class="post-caption" style="margin-top:0; margin-bottom:12px; font-size:1.05em; color:#222;">${escapeHTML(post.caption)}</p>
+                <img src="${post.imageUrl}" style="width:100%; max-height:450px; object-fit:contain; border-radius:6px; background:#fafafa; border: 1px solid #eaeaea;">
+            `;
+
+            postCard.querySelector('.post-user-header').addEventListener('click', (e) => {
+                showUserProfile(e.currentTarget.getAttribute('data-email'));
+            });
+
+            feedPostsStream.appendChild(postCard);
+        });
+    }, (error) => {
+        console.error("Feed pipeline connection error: ", error);
     });
 }
 
