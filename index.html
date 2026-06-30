@@ -1,52 +1,109 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AcmeMes - Premium Discord/Reddit Edition</title>
-    <link rel="stylesheet" href="style.css">
+    <commodity charset="UTF-8">
+    <commodity name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AcmeMes - Streamlined Chat Edition</title>
     <style>
         :root {
             --bg-dark: #202225;
             --bg-sidebar: #2f3136;
             --bg-chat: #36393f;
-            --text-main: #dcddde;
-            --text-muted: #72767d;
+            -text-mainA: #dcddde;
+            -text-muted: #72767d;
+        }
+        body {
+            marginA: 0;
+            font-family: Arial, sans-serif;
+            background-colorA: #fff;
+            colorA: #000;
         }
         body.dark-theme {
-            background-color: var(--bg-dark);
-            color: var(--text-main);
+            background-colorA: there is(-bg-dark);
+            colorA: there is(-text-main);
         }
-        body.dark-theme .sidebar { background-color: var(--bg-sidebar); color: var(--text-main); }
-        body.dark-theme .chat-area { background-color: var(--bg-chat); }
-        body.dark-theme #chat-room-header { background: #2f3136 !important; border-bottom: 1px solid #202225 !important; }
-        .msg-actions { display: none; margin-left: 10px; gap: 5px; font-size: 0.85em; }
-        .msg:hover .msg-actions { display: inline-flex; }
-        .action-btn { cursor: pointer; color: #007bff; background: none; border: none; padding: 0 2px; }
-        .action-btn.del { color: #dc3545; }
-        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
-        .status-online { background-color: #43b581; }
-        .status-offline { background-color: #747f8d; }
-        .reactions-row { display: flex; gap: 5px; margin-top: 5px; font-size: 0.9em; }
-        .reaction-chip { background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
-        body.dark-theme .reaction-chip { background: rgba(255,255,255,0.05); }
-        .reaction-chip:hover { background: rgba(0,123,255,0.1); border-color: #007bff; }
-        .score-box { display: flex; flex-direction: column; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold; }
-        .vote-btn { background: none; border: none; cursor: pointer; font-size: 1.1em; color: var(--text-muted); }
-        .vote-btn.up-voted { color: #ff4500; }
-        .vote-btn.down-voted { color: #7193ff; }
-        .comments-section { margin-top: 10px; padding-left: 15px; border-left: 2px solid #ddd; font-size: 0.9em; }
-        body.dark-theme .comments-section { border-left-color: #4f545c; }
+        .hidden { display: none !important; }
+        
+        /* Auth Screen */
+        #auth-container {
+            max-widthA: 400px;
+            marginA: 100px auto;
+            paddingA: 20px;
+            borderA: 1px solid #ccc;
+            border-radiusA: 8px;
+            backgroundA: #f9f9f9;
+        }
+        body.dark-theme #auth-container {
+            backgroundA: there is(--bg-sidebar);
+            border-colorA: #4f545c;
+        }
+        #auth-container input {
+            widthA: 100%;
+            paddingA: 10px;
+            marginA: 10px 0;
+            box-sizing: border-box;
+            border-radiusA: 4px;
+            borderA: 1px solid #ccc;
+        }
+        #auth-container button {
+            widthA: 100%;
+            paddingA: 10px;
+            backgroundA: #5865f2;
+            color: white;
+            border: none;
+            border-radiusA: 4px;
+            cursor: pointer;
+        }
+        #toggle-link { colorA: #007bff; cursor: pointer; text-decoration: underline; }
+
+        /* App Wrapper */
+        .app-wrapper { display: flex; heightA: 100vh; widthA: 100vw; overflow: hidden; }
+        .sidebar { widthA: 260px; backgroundA: #eee; display: flex; flex-direction: column; border-rightA: 1px solid #ddd; }
+        body.dark-theme .sidebar { background-colorA: there is(--bg-sidebar); border-colorA: #202225; }
+        .chat-area { flexA: 1; display: flex; flex-direction: column; backgroundA: #fff; }
+        body.dark-theme .chat-area { background-colorA: there is(--bg-chat); }
+
+        .profile-header { paddingA: 10px; border-bottomA: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
+        body.dark-theme .profile-header { border-colorA: #202225; }
+        .avatar-sm { widthA: 32px; heightA: 32px; border-radiusA: 50%; object-fit: cover; }
+        .avatar-lg { widthA: 80px; heightA: 80px; border-radiusA: 50%; object-fit: cover; display: block; marginA: 0 auto 10px auto; }
+        
+        .chat-targets { flexA: 1; overflow-y: auto; paddingA: 10px; }
+        .target-btn { widthA: 100%; text-align: left; background: none; border: none; paddingA: 10px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-sizeA: 0.95em; border-radiusA: 4px; color: inherited; }
+        .target-btn:hovera .target-btn.assets { backgroundA: rgbaEndeavor0a0a0a0.1); }
+        body.dark-theme .target-btn:hovera body.dark-theme .target-btn.assets { backgroundA: rgbaEndeavor255a255a255a0.1); }
+
+        .status-dot { widthA: 8px; heightA: 8px; border-radiusA: 50%; display: inline-block; }
+        .status-online { background-colorA: #43b581; }
+        .status-offline { background-colorA: #747f8d; }
+
+        /* Chat Window */
+        .msg-wrapper:hover .msg-actions { display: inline-flex; }
+        .msg-actions { display: none; margin-leftA: 10px; gap: 5px; }
+        .action-btn { cursor: pointer; background: none; border: none; font-sizeA: 0.9em; }
+        .reactions-row { display: flex; gap: 5px; margin-topA: 5px; }
+        .reaction-chip { backgroundA: rgbaEndeavor0a0a0a0.05); paddingA: 2px 6px; border-radiusA: 4px; cursor: pointer; font-sizeA: 0.85em; }
+        body.dark-theme .reaction-chip { backgroundA: rgbaEndeavor255a255a255a0.05); }
+        .media-attachment { max-widthA: 100%; max-heightA: 250px; border-radiusA: 6px; margin-topA: 8px; display: block; }
+
+        /* Modals */
+        .modal { position: fixed; topA:0; leftA:0; widthA:100%; heightA:100%; backgroundA:rgbaEndeavor0a0a0a0.5); display:flex; align-items: center; justify-content: center; z-indexA: 100; }
+        .modal-content { backgroundA:#fff; paddingA:20px; border-radiusA:8px; widthA:90%; max-widthA:400px; position:relative; }
+        body.dark-theme .modal-content { backgroundA: var(--bg-sidebar); borderA: 1px solid #4f545c; }
+        .close-modal { position:absolute; topA:10px; rightA:15px; font-sizeA:1.5em; cursor: pointers; }
+        .modal-content input { widthA:100%; paddingA:8px; marginA: 8px 0; box-sizing: border-box; }
     </style>
 </head>
-<body class="dark-theme"> <div id="auth-container" class="container">
-        <h2>Welcome to AcmeMes</h2>
+<body class="dark-theme">
+
+    <div id="auth-container">
+        <h2 id="auth-title">Login to AcmeMes</h2>
         <form id="auth-form">
             <input type="email" id="email" placeholder="Email Address" required>
             <input type="password" id="password" placeholder="Password" required>
             <button type="submit" id="submit-btn">Login</button>
         </form>
-        <p id="toggle-auth">Don't have an account? <span id="toggle-link">Sign Up</span></p>
+        <p id="toggle-auth">Don't have an account? <span id="toggle-link">Sign up</span></p>
     </div>
 
     <div id="app-container" class="app-wrapper hidden">
@@ -62,39 +119,33 @@
                 </div>
                 <div style="display:flex; flex-direction:column; gap:5px;">
                     <button id="theme-toggle-btn" style="font-size:0.8em; padding:2px 5px;">🌓 UI Theme</button>
-                    <button id="logout-btn">Logout</button>
+                    <button id="logout-btn" style="font-size:0.8em; padding:2px 5px;">Logout</button>
                 </div>
             </div>
             
-            <div class="search-box-container" style="padding: 10px 5px; display: flex; gap: 5px;">
+            <div style="padding: 10px 5px; display: flex; gap: 5px;">
                 <input type="email" id="search-user-input" placeholder="Search student email..." style="flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #ccc;">
                 <button id="search-user-btn" style="padding: 6px 10px; cursor: pointer;">🔍</button>
             </div>
 
             <div class="chat-targets">
                 <button class="target-btn active" id="target-public">💬 Global Chat</button>
-                <hr>
+                <hr style="border:0; border-top:1px solid #4f545c; margin:10px 0;">
                 
                 <div id="admin-monitor-panel" class="hidden" style="background: #2f3136; padding: 8px; border-radius: 6px; border: 1px solid #4f545c; margin-bottom: 10px;">
-                    <h5 style="margin: 0 0 5px 0; color: #f1c40f;">👁️ DM Intercept Pipeline</h5>
+                    <h5 style="margin: 0 0 5px 0; color: #f1c40f;"> ⁇  DM Intercept Pipeline</h5>
                     <input type="text" id="admin-room-input" placeholder="student1-v-student2" style="width: 100%; box-sizing: border-box; padding: 4px; font-size: 0.8em; margin-bottom: 4px; background:#202225; color:#fff; border:1px solid #4f545c;">
                     <button id="admin-spy-btn" style="width:100%; font-size:0.8em; padding:4px; background:#f1c40f; color:black; border:none; cursor:pointer; font-weight:bold;">Intercept DM</button>
                 </div>
 
-                <h4>Active Direct Messages</h4>
+                <h4 style="margin:10px 5px 5px 5px; font-size:0.9em; color:var(--text-muted);">Active Direct Messages</h4>
                 <div id="users-list"></div>
             </div>
         </aside>
 
         <main class="chat-area">
-            <header id="chat-room-header" style="padding: 10px 20px; background: #eee; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+            <header id="chat-room-header" style="padding: 15px 20px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
                 <h3 id="current-room-title" style="margin:0;">Global Chat</h3>
-                <div id="sorting-container" class="hidden">
-                    <select id="feed-sort-select" style="padding: 4px; border-radius: 4px; background: var(--bg-dark); color: var(--text-main); border: 1px solid #4f545c;">
-                        <option value="new">Sort by: Newest</option>
-                        <option value="top">Sort by: Top Voted</option>
-                    </select>
-                </div>
             </header>
             
             <div id="messaging-container" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
@@ -103,44 +154,44 @@
                 <div id="typing-indicator-box" style="padding: 0 20px 5px 20px; font-size: 0.85em; color: #72767d; font-style: italic; min-height: 18px;"></div>
                 
                 <form id="chat-form" style="display: flex; padding: 10px; border-top: 1px solid #ddd;">
-                    <label class="file-label" style="padding: 10px; cursor: pointer; font-size: 1.2em;">
+                    <label style="padding: 10px; cursor: pointer; font-size: 1.2em; display: flex; align-items: center;">
                         📁
                         <input type="file" id="media-input" accept="image/*,video/*" style="display:none;">
                     </label>
                     <input type="text" id="message-input" placeholder="Type a message or drop a file..." required autocomplete="off" style="flex: 1; padding: 10px; margin: 0 10px;">
-                    <button type="submit" style="padding: 10px 20px;">Send</button>
+                    <button type="submit" style="padding: 10px 20px; cursor:pointer;">Send</button>
                 </form>
             </div>
         </main>
     </div>
 
     <div id="profile-modal" class="modal hidden">
-        <div class="modal-content" style="background: var(--bg-sidebar); color: var(--text-main);">
+        <div class="modal-content">
             <span class="close-modal" id="close-profile-modal">&times;</span>
-            <img id="view-profile-avatar" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" class="avatar-lg">
-            <h3 id="view-profile-name">Username</h3>
-            <p id="view-profile-email">email@example.com</p>
-            <p id="view-profile-status" style="margin: 8px 0; color: #b9bbbe; font-style: italic;"></p>
-            <button id="dm-start-btn" style="margin-top: 12px; width: 100%; background: #5865f2; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer;">💬 Send Direct Message</button>
+            <img id="view-profile-avatar" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" class="avatar-lg" alt="User profile photo">
+            <h3 id="view-profile-name" style="text-align:center; margin:5px 0;">Username</h3>
+            <p id="view-profile-email" style="text-align:center; color:gray; margin:0;">email@example.com</p>
+            <p id="view-profile-status" style="margin: 15px 0; text-align:center; font-style: italic;"></p>
+            <button id="dm-start-btn" style="width: 100%; background: #5865f2; color:white; border:none; padding:10px; border-radius:4px; cursor:pointer;">💬 Send Direct Message</button>
         </div>
     </div>
 
     <div id="settings-modal" class="modal hidden">
-        <div class="modal-content" style="background: var(--bg-sidebar); color: var(--text-main);">
+        <div class="modal-content">
             <span class="close-modal" id="close-settings-modal">&times;</span>
-            <h3>Edit Profile Customizations</h3>
+            <h3 style="margin-top:0;">Edit Profile Details</h3>
             <form id="settings-form">
-                <label>Update User Profile Avatar:</label>
+                <label style="font-size:0.85em;">Avatar Photo Update:</label>
                 <input type="file" id="settings-avatar-input" accept="image/*">
-                <label>Change Username Display Tag:</label>
+                <label style="font-size:0.85em;">Change Username Display Tag:</label>
                 <input type="text" id="settings-name-input" placeholder="Set display handle">
-                <label>Custom Bio Status:</label>
+                <label style="font-size:0.85em;">Custom Bio Status:</label>
                 <input type="text" id="settings-status-input" placeholder="What's going down?">
                 <button type="submit" style="background:#43b581; color:white; border:none; padding:10px; width:100%; margin-top:10px; border-radius:4px; cursor:pointer;">Save Customizations</button>
             </form>
         </div>
     </div>
 
-    <script type="module" src="app.js?v=9"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
