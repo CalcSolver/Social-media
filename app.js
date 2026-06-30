@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 const firebaseConfig = {
@@ -40,6 +40,11 @@ const usersList = document.getElementById('users-list');
 const searchUserInput = document.getElementById('search-user-input');
 const searchUserBtn = document.getElementById('search-user-btn');
 
+// Admin Elements
+const adminMonitorPanel = document.getElementById('admin-monitor-panel');
+const adminRoomInput = document.getElementById('admin-room-input');
+const adminSpyBtn = document.getElementById('admin-spy-btn');
+
 // View Panel Switching Components
 const viewChatBtn = document.getElementById('view-chat-btn');
 const viewFeedBtn = document.getElementById('view-feed-btn');
@@ -72,12 +77,13 @@ const settingsStatusInput = document.getElementById('settings-status-input');
 let isSignUpMode = false;
 let currentUser = null;
 let currentChatMode = "public"; 
+let adminSpyRoomId = null;
 let unsubscribeChat = null;
 let unsubscribeFeed = null;
 
-// Stable, high-uptime placeholder asset fallback link
 const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
+const ADMIN_EMAIL = "hjass2865@gmail.com";
 
 // View Switching Handlers
 viewChatBtn.addEventListener('click', () => {
@@ -85,11 +91,7 @@ viewChatBtn.addEventListener('click', () => {
     viewFeedBtn.classList.remove('active');
     messagingContainer.style.display = "flex";
     memeFeedContainer.classList.add('hidden');
-    if (currentChatMode === "public") {
-        currentRoomTitle.textContent = "Global Chat";
-    } else {
-        currentRoomTitle.textContent = `Direct Message: ${currentChatMode}`;
-    }
+    currentRoomTitle.textContent = currentChatMode === "public" ? "Global Chat" : (currentChatMode.startsWith("spy_") ? `Admin Intercept: ${adminSpyRoomId}` : `Direct Message: ${currentChatMode}`);
 });
 
 viewFeedBtn.addEventListener('click', () => {
@@ -143,6 +145,13 @@ onAuthStateChanged(auth, async (user) => {
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
         
+        // Show administrative tools to the owner account
+        if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+            adminMonitorPanel.classList.remove('hidden');
+        } else {
+            adminMonitorPanel.classList.add('hidden');
+        }
+
         const userDoc = await getDoc(doc(db, "users", user.email.toLowerCase()));
         if (userDoc.exists()) {
             const data = userDoc.data();
@@ -165,7 +174,20 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// Sidebar Explicit Email Search Interface Execution
+// Admin Intercept Engine Event Hook
+adminSpyBtn.addEventListener('click', () => {
+    const targetRoomInput = adminRoomInput.value.trim();
+    if (!targetRoomInput) return;
+    
+    // Clean string to compute matching document token paths
+    adminSpyRoomId = targetRoomInput.toLowerCase().replace(/[@.]/g, '_');
+    currentChatMode = "spy_" + adminSpyRoomId;
+    viewChatBtn.click();
+    highlightSidebarBtn(null);
+    currentRoomTitle.textContent = `Admin Intercept: ${adminSpyRoomId}`;
+    loadMessages();
+});
+
 searchUserBtn.addEventListener('click', async () => {
     const searchEmail = searchUserInput.value.trim().toLowerCase();
     if (!searchEmail) return;
@@ -176,7 +198,6 @@ searchUserBtn.addEventListener('click', async () => {
     await showUserProfile(searchEmail);
 });
 
-// Helper: Generates a deterministic combined key string skipping index operations
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("__").replace(/[@.]/g, '_');
 }
@@ -195,7 +216,7 @@ async function loadActiveDMList() {
                 btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
                 btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
                 btn.addEventListener('click', () => {
-                    viewChatBtn.click(); // Ensure messaging tab opens
+                    viewChatBtn.click();
                     highlightSidebarBtn(btn);
                     switchChannel(userData.email.toLowerCase());
                 });
@@ -203,7 +224,7 @@ async function loadActiveDMList() {
             }
         });
     } catch (err) {
-        console.error("Error building dashboard: ", err);
+        console.error(err);
     }
 }
 
@@ -234,25 +255,6 @@ myProfileDisplay.addEventListener('click', async () => {
     settingsModal.classList.remove('hidden');
 });
 
-function compressAvatar(file) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 120;
-                canvas.height = 120;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, 120, 120);
-                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
-            };
-        };
-    });
-}
-
 settingsForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const newName = settingsNameInput.value.trim();
@@ -262,22 +264,13 @@ settingsForm.addEventListener('submit', async (e) => {
 
     try {
         if (avatarFile) {
-            const compressedBlob = await compressAvatar(avatarFile);
             const avatarRef = ref(storage, `avatars/${currentUser.email.toLowerCase()}_thumb.jpg`);
-            const snap = await uploadBytes(avatarRef, compressedBlob);
+            const snap = await uploadBytes(avatarRef, avatarFile);
             photoURL = await getDownloadURL(snap.ref);
         }
 
         await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
-        
-        const userPayload = {
-            displayName: newName,
-            status: newStatus,
-            photoURL: photoURL,
-            email: currentUser.email.toLowerCase(),
-            uid: currentUser.uid
-        };
-
+        const userPayload = { displayName: newName, status: newStatus, photoURL: photoURL, email: currentUser.email.toLowerCase(), uid: currentUser.uid };
         await setDoc(doc(db, "users", currentUser.email.toLowerCase()), userPayload, { merge: true });
         userCache[currentUser.email.toLowerCase()] = userPayload;
 
@@ -288,23 +281,17 @@ settingsForm.addEventListener('submit', async (e) => {
         loadActiveDMList(); 
         loadMessages(); 
     } catch (err) {
-        alert("Error saving settings: " + err.message);
+        alert(err.message);
     }
 });
 
 async function showUserProfile(email) {
     email = email.toLowerCase();
     let data = userCache[email];
-
     if (!data) {
         const userDoc = await getDoc(doc(db, "users", email));
-        if (userDoc.exists()) {
-            data = userDoc.data();
-            userCache[email] = data;
-        } else {
-            alert("No student registered with that email address!");
-            return;
-        }
+        if (userDoc.exists()) { data = userDoc.data(); userCache[email] = data; }
+        else { alert("No student registered with that email address!"); return; }
     }
 
     if (data) {
@@ -315,19 +302,15 @@ async function showUserProfile(email) {
         
         const newDmBtn = dmStartBtn.cloneNode(true);
         dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
-        
-        // Context profile action connector router
         newDmBtn.addEventListener('click', () => {
             profileModal.classList.add('hidden');
             searchUserInput.value = '';
-            viewChatBtn.click(); // Bring messaging into clear workspace view frame
-            
+            viewChatBtn.click();
             const targetBtnId = `sidebar-${email.replace(/[@.]/g, '-')}`;
             const targetSidebarButton = document.getElementById(targetBtnId);
             highlightSidebarBtn(targetSidebarButton);
             switchChannel(email);
         });
-
         profileModal.classList.remove('hidden');
     }
 }
@@ -343,7 +326,6 @@ feedMediaInput.addEventListener('change', () => {
     if(feedMediaInput.files[0]) feedFileChosen.textContent = feedMediaInput.files[0].name;
 });
 
-// Main Message Submitter Panel Router
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
@@ -363,7 +345,6 @@ chatForm.addEventListener('submit', async (e) => {
         }
 
         const myData = userCache[currentUser.email.toLowerCase()] || {};
-
         const payload = {
             text: text,
             user: currentUser.email.toLowerCase(),
@@ -375,37 +356,73 @@ chatForm.addEventListener('submit', async (e) => {
 
         if (currentChatMode === "public") {
             await addDoc(collection(db, "messages"), payload);
+        } else if (currentChatMode.startsWith("spy_")) {
+            await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
         } else {
             const combinedRoomId = getDMId(currentUser.email, currentChatMode);
             await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
         }
 
         chatForm.reset();
-        messageInput.placeholder = "Type a message or attach a file...";
+        messageInput.placeholder = "Type a message or attach a file... ";
     } catch (err) {
         console.error(err);
     }
 });
 
-// Stream Processor: Messages Framework Pipeline
+// Dynamic Message Modification Handlers (Edit/Delete Actions Engine)
+async function handleModifyMessage(msgId, currentText, action, collectionPath, subId = null) {
+    let targetRef;
+    if (subId) {
+        targetRef = doc(db, collectionPath, subId, "messages", msgId);
+    } else {
+        targetRef = doc(db, collectionPath, msgId);
+    }
+
+    if (action === 'delete') {
+        if (confirm("Are you sure you want to delete this message?")) {
+            await deleteDoc(targetRef);
+        }
+    } else if (action === 'edit') {
+        const newText = prompt("Edit your message:", currentText);
+        if (newText && newText.trim() !== currentText) {
+            await updateDoc(targetRef, { text: newText.trim() });
+        }
+    }
+}
+
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
     chatMessages.innerHTML = '';
 
     let q;
+    let isDM = false;
+    let baseColl = "messages";
+    let subRoom = null;
+
     if (currentChatMode === "public") {
         q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
+    } else if (currentChatMode.startsWith("spy_")) {
+        isDM = true;
+        baseColl = "direct_messages";
+        subRoom = adminSpyRoomId;
+        q = query(collection(db, "direct_messages", adminSpyRoomId, "messages"), orderBy("timestamp", "asc"));
     } else {
-        const combinedRoomId = getDMId(currentUser.email, currentChatMode);
-        q = query(collection(db, "direct_messages", combinedRoomId, "messages"), orderBy("timestamp", "asc"));
+        isDM = true;
+        baseColl = "direct_messages";
+        subRoom = getDMId(currentUser.email, currentChatMode);
+        q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp", "asc"));
     }
 
     unsubscribeChat = onSnapshot(q, (snapshot) => {
         chatMessages.innerHTML = '';
         snapshot.forEach((docSnap) => {
             const data = docSnap.data();
+            const msgId = docSnap.id;
             const messageEl = document.createElement('div');
             const isSentByMe = data.user === currentUser.email.toLowerCase();
+            const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+            
             messageEl.className = `msg ${isSentByMe ? 'sent' : 'received'}`;
             
             let mediaMarkup = '';
@@ -415,6 +432,14 @@ function loadMessages() {
                     : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
+            // Expose Edit/Delete access nodes explicitly if owner or supreme admin identity match
+            const actionControlsMarkup = (isSentByMe || isLoggedAsAdmin) ? `
+                <span class="msg-actions">
+                    ${isSentByMe ? `<button class="action-btn edit-trigger" data-id="${msgId}" data-text="${escapeHTML(data.text || '')}">✏️</button>` : ''}
+                    <button class="action-btn del delete-trigger" data-id="${msgId}">❌</button>
+                </span>
+            ` : '';
+
             const cachedUser = userCache[data.user.toLowerCase()] || {};
             const finalName = cachedUser.displayName || data.displayName || data.user;
             const finalAvatar = cachedUser.photoURL || data.userAvatar || defaultAvatar;
@@ -423,10 +448,24 @@ function loadMessages() {
                 <div class="msg-header-info" data-email="${data.user}">
                     <img src="${finalAvatar}" class="avatar-sm">
                     <span class="msg-user">${finalName}</span>
+                    ${actionControlsMarkup}
                 </div>
                 <span class="msg-text">${escapeHTML(data.text || '')}</span>
                 ${mediaMarkup}
             `;
+
+            // Operational event hooks assignment
+            if (isSentByMe) {
+                const editBtn = messageEl.querySelector('.edit-trigger');
+                if (editBtn) editBtn.addEventListener('click', (e) => {
+                    handleModifyMessage(e.target.dataset.id, e.target.dataset.text, 'edit', baseColl, subRoom);
+                });
+            }
+            if (isSentByMe || isLoggedAsAdmin) {
+                messageEl.querySelector('.delete-trigger').addEventListener('click', (e) => {
+                    handleModifyMessage(e.target.dataset.id, null, 'delete', baseColl, subRoom);
+                });
+            }
 
             messageEl.querySelector('.msg-header-info').addEventListener('click', (e) => {
                 showUserProfile(e.currentTarget.getAttribute('data-email'));
@@ -436,11 +475,10 @@ function loadMessages() {
         });
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }, (error) => {
-        console.error("Snapshot error: ", error);
+        console.error(error);
     });
 }
 
-// Feed Submitter Handler Module
 feedPostForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const caption = postCaptionInput.value.trim();
@@ -454,7 +492,6 @@ feedPostForm.addEventListener('submit', async (e) => {
         const imageUrl = await getDownloadURL(snap.ref);
 
         const myData = userCache[currentUser.email.toLowerCase()] || {};
-
         await addDoc(collection(db, "posts"), {
             caption: caption,
             imageUrl: imageUrl,
@@ -468,36 +505,51 @@ feedPostForm.addEventListener('submit', async (e) => {
         feedPostForm.reset();
         feedFileChosen.textContent = "No file selected";
     } catch (err) {
-        alert("Error creating feed post: " + err.message);
+        alert(err.message);
     }
 });
 
-// Stream Processor: Chronological Public Feed Pipeline
 function loadMemeFeed() {
     if (unsubscribeFeed) unsubscribeFeed();
-    
     const q = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(25));
     
     unsubscribeFeed = onSnapshot(q, (snapshot) => {
         feedPostsStream.innerHTML = '';
         snapshot.forEach((docSnap) => {
             const post = docSnap.data();
+            const postId = docSnap.id;
             const postCard = document.createElement('div');
+            const isMyPost = post.user === currentUser.email.toLowerCase();
+            const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
             postCard.className = 'meme-post-card';
-            postCard.style = "background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);";
+            postCard.style = "background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; position: relative;";
 
             const cachedUser = userCache[post.user.toLowerCase()] || {};
             const finalName = cachedUser.displayName || post.displayName || post.user;
             const finalAvatar = cachedUser.photoURL || post.userAvatar || defaultAvatar;
+
+            const deletePostMarkup = (isMyPost || isLoggedAsAdmin) ? `
+                <button class="delete-post-btn" data-id="${postId}" style="position: absolute; top: 15px; right: 15px; background: none; border: none; cursor: pointer; color: #dc3545;">❌</button>
+            ` : '';
 
             postCard.innerHTML = `
                 <div class="post-user-header" style="display:flex; align-items:center; margin-bottom:10px; cursor:pointer;" data-email="${post.user}">
                     <img src="${finalAvatar}" class="avatar-sm" style="margin-right:10px; width:35px; height:35px; border-radius:50%;">
                     <strong>${finalName}</strong>
                 </div>
+                ${deletePostMarkup}
                 <p class="post-caption" style="margin-top:0; margin-bottom:12px; font-size:1.05em; color:#222;">${escapeHTML(post.caption)}</p>
                 <img src="${post.imageUrl}" style="width:100%; max-height:450px; object-fit:contain; border-radius:6px; background:#fafafa; border: 1px solid #eaeaea;">
             `;
+
+            if (isMyPost || isLoggedAsAdmin) {
+                postCard.querySelector('.delete-post-btn').addEventListener('click', async (e) => {
+                    if (confirm("Delete this meme from public feed?")) {
+                        await deleteDoc(doc(db, "posts", e.target.dataset.id));
+                    }
+                });
+            }
 
             postCard.querySelector('.post-user-header').addEventListener('click', (e) => {
                 showUserProfile(e.currentTarget.getAttribute('data-email'));
@@ -505,8 +557,6 @@ function loadMemeFeed() {
 
             feedPostsStream.appendChild(postCard);
         });
-    }, (error) => {
-        console.error("Feed pipeline connection error: ", error);
     });
 }
 
