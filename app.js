@@ -161,7 +161,7 @@ onAuthStateChanged(auth, async (user) => {
             myAvatar.src = defaultAvatar;
         }
 
-        targetPublicBtn.click(); // Reset layout clean to Global Chat on entry
+        targetPublicBtn.click(); 
         loadActiveDMList();
     } else {
         currentUser = null;
@@ -463,7 +463,6 @@ function loadMessages() {
     });
 }
 
-// Feed Submitter Handler Module
 feedPostForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const caption = postCaptionInput.value.trim();
@@ -499,7 +498,6 @@ feedPostForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Stream Processor: Chronological Public Feed Pipeline
 function loadMemeFeed() {
     if (unsubscribeFeed) unsubscribeFeed();
     const q = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(25));
