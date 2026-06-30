@@ -176,6 +176,7 @@ adminSpyBtn.addEventListener('click', () => {
     const targetRoomInput = adminRoomInput.value.trim();
     if (!targetRoomInput) return;
     
+    // Convert tracking string cleanly for mobile view matching
     adminSpyRoomId = targetRoomInput.toLowerCase().replace(/[@.]/g, '_');
     currentChatMode = "spy_" + adminSpyRoomId;
     
@@ -196,8 +197,9 @@ searchUserBtn.addEventListener('click', async () => {
     await showUserProfile(searchEmail);
 });
 
+// FIXED FOR MOBILE SAFARI: Swapped out double underscores for standard hyphens
 function getDMId(userA, userB) {
-    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("__").replace(/[@.]/g, '_');
+    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
 }
 
 async function loadActiveDMList() {
@@ -354,7 +356,8 @@ chatForm.addEventListener('submit', async (e) => {
         } else if (currentChatMode.startsWith("spy_")) {
             await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
         } else {
-            const combinedRoomId = getDMId(currentUser.email, currentChatMode);
+            // FIXED FOR MOBILE CASE-SENSITIVITY: Sanitize both inputs to lowercase immediately
+            const combinedRoomId = getDMId(currentUser.email.toLowerCase(), currentChatMode.toLowerCase());
             await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
         }
 
@@ -396,7 +399,8 @@ function loadMessages() {
         q = query(collection(db, "direct_messages", adminSpyRoomId, "messages"), orderBy("timestamp", "asc"));
     } else {
         baseColl = "direct_messages";
-        subRoom = getDMId(currentUser.email, currentChatMode);
+        // FIXED FOR MOBILE CASE-SENSITIVITY: Sanitize both parameters to lowercase
+        subRoom = getDMId(currentUser.email.toLowerCase(), currentChatMode.toLowerCase());
         q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp", "asc"));
     }
 
