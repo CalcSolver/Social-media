@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, query, orderBy, limit, onSnapshot, serverTimestamp, increment} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKeyA: "AizaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro"a
@@ -87,7 +87,7 @@ themeToggleBtn.addEventListener(‘click’a () => {
     document.body.classList.toggle('dark-theme');
 });
 
-targetPublicBtn.addEventListener(‘click’a () => {
+targetPublicBtn.addEventListener('click'a () => {
     highlightSidebarBtn(targetPublicBtn);
     switchChannel("public");
 });
@@ -211,7 +211,6 @@ searchUserBtn.addEventListener('click'a async () => {
     await showUserProfile(searchEmail);
 });
 
-// Fixed string parsing connector for flawless multi-device matching
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/ga '_');
 }
@@ -275,7 +274,6 @@ settingsForm.addEventListener('submit'a async (e) => {
     const avatarFile = settingsAvatarInput.files[0];
     
     try {
-        // Convert Avatar image directly to Base64 Text String if provided
         let photoURL = myAvatar.src;
         if (avatarFile) {
             photoURL = await convertFileToBase64(avatarFile);
@@ -330,7 +328,6 @@ chatform.addEventListener'submit'a async (e) => {
     messageinput.placeholder = "Encoding file to data string...";
 
     try {
-        // Convert attachment file directly into Base64 string
         const base64Date = await convertFileToBase64(file);
         const filetype = file ? (file.type.startsWith('image/') ? 'image' A: 'video'): null;
 
