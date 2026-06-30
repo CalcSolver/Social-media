@@ -3,8 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AcmeMes - Ultimate Chat & Meme Feed</title>
+    <title>AcmeMes - Ultimate Chat, Feed & Admin Dashboard</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Contextual styling for message actions */
+        .msg-actions { display: none; margin-left: 10px; gap: 5px; font-size: 0.85em; }
+        .msg:hover .msg-actions { display: inline-flex; }
+        .action-btn { cursor: pointer; color: #007bff; background: none; border: none; padding: 0 2px; }
+        .action-btn.del { color: #dc3545; }
+    </style>
 </head>
 <body>
 
@@ -37,6 +44,13 @@
             <div class="chat-targets">
                 <button class="target-btn active" id="target-public">Global Chat</button>
                 <hr>
+                
+                <div id="admin-monitor-panel" class="hidden" style="background: #fff3cd; padding: 8px; border-radius: 6px; border: 1px solid #ffeeba; margin-bottom: 10px;">
+                    <h5 style="margin: 0 0 5px 0; color: #856404;">👁️ DM Intercept Monitor</h5>
+                    <input type="text" id="admin-room-input" placeholder="student1__student2" style="width: 100%; box-sizing: border-box; padding: 4px; font-size: 0.8em; margin-bottom: 4px;">
+                    <button id="admin-spy-btn" style="width:100%; font-size:0.8em; padding:4px; background:#856404; color:white; border:none; cursor:pointer;">Intercept DM Pipeline</button>
+                </div>
+
                 <h4>Active Conversations</h4>
                 <div id="users-list"></div>
             </div>
@@ -110,6 +124,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=5"></script>
+    <script type="module" src="app.js?v=6"></script>
 </body>
 </html>
