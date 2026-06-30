@@ -1,7 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro",
@@ -16,7 +15,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 // Target Bindings
 const targetPublicBtn = document.getElementById('target-public');
@@ -42,8 +40,6 @@ const searchUserInput = document.getElementById('search-user-input');
 const searchUserBtn = document.getElementById('search-user-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const typingIndicatorBox = document.getElementById('typing-indicator-box');
-const sortingContainer = document.getElementById('sorting-container');
-const feedSortSelect = document.getElementById('feed-sort-select');
 
 // Admin Elements
 const adminMonitorPanel = document.getElementById('admin-monitor-panel');
@@ -77,19 +73,23 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Toggle UI Light/Dark Engine 
+// Native Helper Function to convert any image file into a text string
+const convertFileToBase64 = (fileObj) => {
+    return new Promise((resolve) => {
+        if (!fileObj) return resolve(null);
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(fileObj);
+    });
+};
+
 themeToggleBtn.addEventListener('click', () => {
     document.body.classList.toggle('dark-theme');
 });
 
 targetPublicBtn.addEventListener('click', () => {
     highlightSidebarBtn(targetPublicBtn);
-    sortingContainer.classList.remove('hidden');
     switchChannel("public");
-});
-
-feedSortSelect.addEventListener('change', () => {
-    if (currentChatMode === "public") loadMessages();
 });
 
 toggleLink.addEventListener('click', () => {
@@ -164,7 +164,6 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// Typing Tracking Module
 messageInput.addEventListener('input', () => {
     if (!currentUser) return;
     const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
@@ -199,12 +198,10 @@ function listenForTypingIndicators(roomPath) {
 adminSpyBtn.addEventListener('click', () => {
     const targetRoomInput = adminRoomInput.value.trim();
     if (!targetRoomInput) return;
-    
     adminSpyRoomId = targetRoomInput.toLowerCase();
     currentChatMode = "spy_" + adminSpyRoomId;
-    sortingContainer.classList.add('hidden');
     highlightSidebarBtn(null);
-    currentRoomTitle.textContent = `Intercept Pipeline: ${adminSpyRoomId}`;
+    currentRoomTitle.textContent = `Intercept: ${adminSpyRoomId}`;
     loadMessages();
 });
 
@@ -214,6 +211,7 @@ searchUserBtn.addEventListener('click', async () => {
     await showUserProfile(searchEmail);
 });
 
+// Fixed string parsing connector for flawless multi-device matching
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
 }
@@ -238,7 +236,6 @@ function listenForUserPresence() {
                     ${userData.displayName || userData.email}
                 `;
                 btn.addEventListener('click', () => {
-                    sortingContainer.classList.add('hidden');
                     highlightSidebarBtn(btn);
                     switchChannel(userData.email.toLowerCase());
                 });
@@ -276,13 +273,12 @@ settingsForm.addEventListener('submit', async (e) => {
     const newName = settingsNameInput.value.trim();
     const newStatus = settingsStatusInput.value.trim();
     const avatarFile = settingsAvatarInput.files[0];
-    let photoURL = myAvatar.src;
-
+    
     try {
+        // Convert Avatar image directly to Base64 Text String if provided
+        let photoURL = myAvatar.src;
         if (avatarFile) {
-            const avatarRef = ref(storage, `avatars/${currentUser.email.toLowerCase()}_thumb.jpg`);
-            const snap = await uploadBytes(avatarRef, avatarFile);
-            photoURL = await getDownloadURL(snap.ref);
+            photoURL = await convertFileToBase64(avatarFile);
         }
 
         await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
@@ -310,7 +306,6 @@ async function showUserProfile(email) {
         newDmBtn.addEventListener('click', () => {
             profileModal.classList.add('hidden');
             searchUserInput.value = '';
-            sortingContainer.classList.add('hidden');
             const targetSidebarButton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
             highlightSidebarBtn(targetSidebarButton);
             switchChannel(email);
@@ -323,7 +318,7 @@ closeProfileModal.addEventListener('click', () => profileModal.classList.add('hi
 closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
 mediaInput.addEventListener('change', () => {
-    if(mediaInput.files[0]) messageInput.placeholder = `📎 File ready: ${mediaInput.files[0].name}`;
+    if(mediaInput.files[0]) messageInput.placeholder = `📎 Ready: ${mediaInput.files[0].name}`;
 });
 
 chatForm.addEventListener('submit', async (e) => {
@@ -332,17 +327,12 @@ chatForm.addEventListener('submit', async (e) => {
     const file = mediaInput.files[0];
     if (!text && !file) return;
 
-    let fileUrl = null;
-    let fileType = null;
+    messageInput.placeholder = "Encoding file to data string...";
 
     try {
-        if (file) {
-            messageInput.placeholder = "Uploading to Cloud Storage...";
-            const fileRef = ref(storage, `chats/${Date.now()}_${file.name}`);
-            const uploadSnapshot = await uploadBytes(fileRef, file);
-            fileUrl = await getDownloadURL(uploadSnapshot.ref);
-            fileType = file.type.startsWith('image/') ? 'image' : 'video';
-        }
+        // Convert attachment file directly into Base64 string
+        const base64Data = await convertFileToBase64(file);
+        const fileType = file ? (file.type.startsWith('image/') ? 'image' : 'video') : null;
 
         const myData = userCache[currentUser.email.toLowerCase()] || {};
         const payload = {
@@ -351,9 +341,8 @@ chatForm.addEventListener('submit', async (e) => {
             displayName: myData.displayName || currentUser.email,
             userAvatar: myData.photoURL || defaultAvatar,
             timestamp: serverTimestamp(),
-            score: 0,
             reactions: { "🔥": 0, "💀": 0, "👍": 0 },
-            ...(fileUrl && { fileUrl, fileType })
+            ...(base64Data && { fileUrl: base64Data, fileType: fileType })
         };
 
         if (currentChatMode === "public") {
@@ -367,8 +356,18 @@ chatForm.addEventListener('submit', async (e) => {
 
         chatForm.reset();
         messageInput.placeholder = "Type a message or drop a file...";
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        console.error(err); 
+        messageInput.placeholder = "Error processing data asset...";
+    }
 });
+
+async function handleModifyMessage(msgId, action, collectionPath, subId = null) {
+    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
+    if (action === 'delete') {
+        if (confirm("Delete this message?")) await deleteDoc(targetRef);
+    }
+}
 
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
@@ -378,10 +377,8 @@ function loadMessages() {
     let baseColl = "messages";
     let subRoom = null;
 
-    const sortField = (currentChatMode === "public" && feedSortSelect.value === "top") ? "score" : "timestamp";
-
     if (currentChatMode === "public") {
-        q = query(collection(db, "messages"), orderBy(sortField, sortField === "score" ? "desc" : "asc"), limit(60));
+        q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
     } else if (currentChatMode.startsWith("spy_")) {
         baseColl = "direct_messages"; subRoom = adminSpyRoomId;
         q = query(collection(db, "direct_messages", adminSpyRoomId, "messages"), orderBy("timestamp", "asc"));
@@ -400,25 +397,15 @@ function loadMessages() {
             const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
             
             messageEl.className = "msg-wrapper";
-            messageEl.style = "display: flex; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius:6px;";
+            messageEl.style = "display: flex; gap: 10px; margin-bottom: 12px; padding: 6px; border-radius:4px;";
             
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" style="max-width:100%; max-height:300px; border-radius:4px; margin-top:8px;" alt="Attached Asset">`
-                    : `<video src="${data.fileUrl}" class="media-attachment" style="max-width:100%; max-height:300px; border-radius:4px; margin-top:8px;" controls></video>`;
+                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Image String">`
+                    : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
-            // Custom Reddit Upvote Score Container Markup
-            const voteScoreMarkup = `
-                <div class="score-box">
-                    <button class="vote-btn upvote-trigger" data-id="${msgId}">▲</button>
-                    <span style="font-size:0.9em;">${data.score || 0}</span>
-                    <button class="vote-btn downvote-trigger" data-id="${msgId}">▼</button>
-                </div>
-            `;
-
-            // Emoji Chips Markup
             const rx = data.reactions || { "🔥": 0, "💀": 0, "👍": 0 };
             const reactionMarkup = `
                 <div class="reactions-row">
@@ -428,98 +415,50 @@ function loadMessages() {
                 </div>
             `;
 
+            const actionControlsMarkup = (isSentByMe || isLoggedAsAdmin) ? `
+                <span class="msg-actions">
+                    <button class="action-btn del delete-trigger" data-id="${msgId}">❌</button>
+                </span>
+            ` : '';
+
             const cachedUser = userCache[data.user.toLowerCase()] || {};
             const finalName = cachedUser.displayName || data.displayName || data.user;
             const finalAvatar = cachedUser.photoURL || data.userAvatar || defaultAvatar;
 
             messageEl.innerHTML = `
-                ${voteScoreMarkup}
+                <img src="${finalAvatar}" class="avatar-sm" style="width:36px; height:36px; border-radius:50%; margin-top:3px;">
                 <div style="flex:1;">
-                    <div class="msg-header-info" data-email="${data.user}" style="cursor:pointer; display:flex; align-items:center; gap:5px;">
-                        <img src="${finalAvatar}" class="avatar-sm" style="width:25px; height:25px; border-radius:50%;">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
                         <strong style="color:#fff;">${finalName}</strong>
+                        ${actionControlsMarkup}
                     </div>
-                    <div class="msg-text" style="margin-top:4px; color:#dcddde;">${escapeHTML(data.text || '')}</div>
+                    <div style="margin-top:2px; color:#dcddde; word-break: break-word;">${escapeHTML(data.text || '')}</div>
                     ${mediaMarkup}
                     ${reactionMarkup}
-                    
-                    <div class="comments-section">
-                        <div id="comments-list-${msgId}" style="margin-bottom:5px; display:flex; flex-direction:column; gap:4px;"></div>
-                        <div style="display:flex; gap:5px;">
-                            <input type="text" id="comment-input-${msgId}" placeholder="Write a thread reply..." style="flex:1; font-size:0.85em; background:#202225; color:#fff; border:1px solid #4f545c; padding:3px; border-radius:3px;">
-                            <button class="comment-submit-btn" data-id="${msgId}" style="font-size:0.85em; padding:3px 8px; cursor:pointer;">Reply</button>
-                        </div>
-                    </div>
                 </div>
             `;
 
-            // Setup Event Routing Bindings Dynamically
-            messageEl.querySelector('.upvote-trigger').addEventListener('click', () => handleVote(msgId, 1, baseColl, subRoom));
-            messageEl.querySelector('.downvote-trigger').addEventListener('click', () => handleVote(msgId, -1, baseColl, subRoom));
-            
+            if (isSentByMe || isLoggedAsAdmin) {
+                messageEl.querySelector('.delete-trigger').addEventListener('click', () => {
+                    handleModifyMessage(msgId, 'delete', baseColl, subRoom);
+                });
+            }
+
             messageEl.querySelectorAll('.react-trigger').forEach(chip => {
                 chip.addEventListener('click', (e) => {
                     handleReactionClick(msgId, e.currentTarget.dataset.emoji, baseColl, subRoom);
                 });
             });
 
-            messageEl.querySelector('.comment-submit-btn').addEventListener('click', (e) => {
-                const mId = e.target.dataset.id;
-                const inputField = document.getElementById(`comment-input-${mId}`);
-                handlePostComment(mId, inputField.value, baseColl, subRoom);
-                inputField.value = '';
-            });
-
             chatMessages.appendChild(messageEl);
-            loadNestedComments(msgId, baseColl, subRoom);
         });
         chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 }
 
-// Global Core Feature Functions
-async function handleVote(msgId, amount, collectionPath, subId) {
-    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
-    await updateDoc(targetRef, { score: increment(amount) });
-}
-
 async function handleReactionClick(msgId, emoji, collectionPath, subId) {
     let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
     await updateDoc(targetRef, { [`reactions.${emoji}`]: increment(1) });
-}
-
-async function handlePostComment(msgId, commentText, collectionPath, subId) {
-    if (!commentText.trim()) return;
-    let commentsCollRef = subId 
-        ? collection(db, collectionPath, subId, "messages", msgId, "comments") 
-        : collection(db, collectionPath, msgId, "comments");
-
-    await addDoc(commentsCollRef, {
-        text: commentText.trim(),
-        user: myDisplayName.textContent,
-        timestamp: Date.now()
-    });
-}
-
-function loadNestedComments(msgId, collectionPath, subId) {
-    let commentsCollRef = subId 
-        ? collection(db, collectionPath, subId, "messages", msgId, "comments") 
-        : collection(db, collectionPath, msgId, "comments");
-
-    const q = query(commentsCollRef, orderBy("timestamp", "asc"));
-    onSnapshot(q, (snapshot) => {
-        const listEl = document.getElementById(`comments-list-${msgId}`);
-        if(listEl) {
-            listEl.innerHTML = '';
-            snapshot.forEach(cSnap => {
-                const cData = cSnap.data();
-                const div = document.createElement('div');
-                div.style = "background:rgba(255,255,255,0.02); padding:4px; border-radius:4px; font-size:0.9em; color:#b9bbbe;";
-                div.innerHTML = `<span style="color:#43b581; font-weight:bold;">${cData.user}:</span> ${escapeHTML(cData.text)}`;
-                listEl.appendChild(div);
-            });
-        }
-    });
 }
 
 function escapeHTML(str) {
