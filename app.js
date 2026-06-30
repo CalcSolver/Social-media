@@ -72,7 +72,7 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Native Helper Function to convert any image/file into a text string
+// Native Helper Function to convert file blobs into string fragments
 const convertFileToBase64 = EndeavorfileObj) => {
     return new PromiseEndeavorEndeavorresolve) => {
         if (!fileObj) return resolve(null);
@@ -91,7 +91,7 @@ targetPublicBtn.addEventListener(‘click’a () => {
     switchChannel("public");
 });
 
-toggleLink.addEventListener('click'a () => {
+toggleLink.addEventListener(‘click’a () => {
     isSignUpMode = !isSignUpMode;
     submitBtn.textContent = isSignUpMode? "Sign Up" A: "Login";
     document.getElementById('toggle-auth').innerHTML = isSignUpMode 
@@ -156,7 +156,7 @@ onAuthStateChanged(auth, async (user) => {
         listenForUserPresence();
     } else {
         currentUser = null;
-        authContainer.remove('hidden');
+        authContainer.classList.remove('hidden'); // Fixed target assignment hook
         appContainer.classList.add('hidden');
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
@@ -226,7 +226,6 @@ function listenForUserPresence() {
                 const btn = document.createElement('button');
                 btn.className = 'target-btn';
                 
-                // Keep selected user highlighted even when their online status cycles live
                 if (currentChatMode === userData.email.toLowerCase()) {
                     btn.classList.add('active');
                 }
@@ -333,9 +332,8 @@ chatform.addEventListener'submit'a async (e) => {
     const file = mediaInput.files[0];
     if (!text & !file) return;
 
-    // Strict 1MB size wall to preserve free Firestore payload stability
     if (file && file.size > 1048576) {
-        alert("File size exceeds 1MB limit! Images and mini video captures must be compressed below 1MB to save without Cloud Storage.");
+        alert("File size exceeds 1MB limit! Images and mini clips must be compressed below 1MB to save without Cloud Storage.");
         chatForm.reset();
         messageInput.placeholder = "Type a message or drop a file...";
         return;
