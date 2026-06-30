@@ -3,18 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AcmeMes - Ultimate Chat, Feed & Admin Dashboard</title>
+    <title>AcmeMes - Premium Discord/Reddit Edition</title>
     <link rel="stylesheet" href="style.css">
     <style>
+        :root {
+            --bg-dark: #202225;
+            --bg-sidebar: #2f3136;
+            --bg-chat: #36393f;
+            --text-main: #dcddde;
+            --text-muted: #72767d;
+        }
+        body.dark-theme {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+        }
+        body.dark-theme .sidebar { background-color: var(--bg-sidebar); color: var(--text-main); }
+        body.dark-theme .chat-area { background-color: var(--bg-chat); }
+        body.dark-theme #chat-room-header { background: #2f3136 !important; border-bottom: 1px solid #202225 !important; }
         .msg-actions { display: none; margin-left: 10px; gap: 5px; font-size: 0.85em; }
         .msg:hover .msg-actions { display: inline-flex; }
         .action-btn { cursor: pointer; color: #007bff; background: none; border: none; padding: 0 2px; }
         .action-btn.del { color: #dc3545; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+        .status-online { background-color: #43b581; }
+        .status-offline { background-color: #747f8d; }
+        .reactions-row { display: flex; gap: 5px; margin-top: 5px; font-size: 0.9em; }
+        .reaction-chip { background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
+        body.dark-theme .reaction-chip { background: rgba(255,255,255,0.05); }
+        .reaction-chip:hover { background: rgba(0,123,255,0.1); border-color: #007bff; }
+        .score-box { display: flex; flex-direction: column; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold; }
+        .vote-btn { background: none; border: none; cursor: pointer; font-size: 1.1em; color: var(--text-muted); }
+        .vote-btn.up-voted { color: #ff4500; }
+        .vote-btn.down-voted { color: #7193ff; }
+        .comments-section { margin-top: 10px; padding-left: 15px; border-left: 2px solid #ddd; font-size: 0.9em; }
+        body.dark-theme .comments-section { border-left-color: #4f545c; }
     </style>
 </head>
-<body>
-
-    <div id="auth-container" class="container">
+<body class="dark-theme"> <div id="auth-container" class="container">
         <h2>Welcome to AcmeMes</h2>
         <form id="auth-form">
             <input type="email" id="email" placeholder="Email Address" required>
@@ -28,11 +53,17 @@
         
         <aside class="sidebar">
             <div class="profile-header">
-                <div id="my-profile-display" style="cursor: pointer;">
+                <div id="my-profile-display" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
                     <img id="my-avatar" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Avatar" class="avatar-sm">
-                    <span id="my-display-name">Loading...</span>
+                    <div>
+                        <span id="my-display-name">Loading...</span>
+                        <div style="font-size: 0.75em; color: #43b581;">● Active</div>
+                    </div>
                 </div>
-                <button id="logout-btn">Logout</button>
+                <div style="display:flex; flex-direction:column; gap:5px;">
+                    <button id="theme-toggle-btn" style="font-size:0.8em; padding:2px 5px;">🌓 UI Theme</button>
+                    <button id="logout-btn">Logout</button>
+                </div>
             </div>
             
             <div class="search-box-container" style="padding: 10px 5px; display: flex; gap: 5px;">
@@ -42,84 +73,74 @@
 
             <div class="chat-targets">
                 <button class="target-btn active" id="target-public">💬 Global Chat</button>
-                <button class="target-btn" id="target-feed">🔥 Meme Feed</button>
                 <hr>
                 
-                <div id="admin-monitor-panel" class="hidden" style="background: #fff3cd; padding: 8px; border-radius: 6px; border: 1px solid #ffeeba; margin-bottom: 10px;">
-                    <h5 style="margin: 0 0 5px 0; color: #856404;">👁️ DM Intercept Monitor</h5>
-                    <input type="text" id="admin-room-input" placeholder="student1__student2" style="width: 100%; box-sizing: border-box; padding: 4px; font-size: 0.8em; margin-bottom: 4px;">
-                    <button id="admin-spy-btn" style="width:100%; font-size:0.8em; padding:4px; background:#856404; color:white; border:none; cursor:pointer;">Intercept DM Pipeline</button>
+                <div id="admin-monitor-panel" class="hidden" style="background: #2f3136; padding: 8px; border-radius: 6px; border: 1px solid #4f545c; margin-bottom: 10px;">
+                    <h5 style="margin: 0 0 5px 0; color: #f1c40f;">👁️ DM Intercept Pipeline</h5>
+                    <input type="text" id="admin-room-input" placeholder="student1-v-student2" style="width: 100%; box-sizing: border-box; padding: 4px; font-size: 0.8em; margin-bottom: 4px; background:#202225; color:#fff; border:1px solid #4f545c;">
+                    <button id="admin-spy-btn" style="width:100%; font-size:0.8em; padding:4px; background:#f1c40f; color:black; border:none; cursor:pointer; font-weight:bold;">Intercept DM</button>
                 </div>
 
-                <h4>Active Conversations</h4>
+                <h4>Active Direct Messages</h4>
                 <div id="users-list"></div>
             </div>
         </aside>
 
         <main class="chat-area">
-            <header id="chat-room-header" style="padding: 10px 20px; background: #eee; border-bottom: 1px solid #ddd;">
-                <h3 id="current-room-title">Global Chat</h3>
+            <header id="chat-room-header" style="padding: 10px 20px; background: #eee; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                <h3 id="current-room-title" style="margin:0;">Global Chat</h3>
+                <div id="sorting-container" class="hidden">
+                    <select id="feed-sort-select" style="padding: 4px; border-radius: 4px; background: var(--bg-dark); color: var(--text-main); border: 1px solid #4f545c;">
+                        <option value="new">Sort by: Newest</option>
+                        <option value="top">Sort by: Top Voted</option>
+                    </select>
+                </div>
             </header>
             
             <div id="messaging-container" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
                 <div id="chat-messages" style="flex: 1; overflow-y: auto; padding: 20px;"></div>
+                
+                <div id="typing-indicator-box" style="padding: 0 20px 5px 20px; font-size: 0.85em; color: #72767d; font-style: italic; min-height: 18px;"></div>
+                
                 <form id="chat-form" style="display: flex; padding: 10px; border-top: 1px solid #ddd;">
-                    <label class="file-label" style="padding: 10px; cursor: pointer;">
+                    <label class="file-label" style="padding: 10px; cursor: pointer; font-size: 1.2em;">
                         📁
                         <input type="file" id="media-input" accept="image/*,video/*" style="display:none;">
                     </label>
-                    <input type="text" id="message-input" placeholder="Type a message or attach a file..." required autocomplete="off" style="flex: 1; padding: 10px; margin: 0 10px;">
+                    <input type="text" id="message-input" placeholder="Type a message or drop a file..." required autocomplete="off" style="flex: 1; padding: 10px; margin: 0 10px;">
                     <button type="submit" style="padding: 10px 20px;">Send</button>
                 </form>
-            </div>
-
-            <div id="meme-feed-container" class="hidden" style="flex: 1; overflow-y: auto; padding: 20px; background: #f4f4f7;">
-                <div class="create-post-card" style="background: white; padding: 15px; margin: 0 auto 20px auto; max-width: 600px; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                    <h4 style="margin-top: 0;">Share a Meme to the School Feed</h4>
-                    <form id="feed-post-form">
-                        <input type="text" id="post-caption-input" placeholder="Write a funny caption..." required style="width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-                        <div style="display: flex; align-items: center; margin-bottom: 10px; gap: 10px;">
-                            <label class="file-label" style="padding: 8px 12px; background: #e0e0e0; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
-                                🖼️ Choose Meme File
-                                <input type="file" id="feed-media-input" accept="image/*,video/*" style="display:none;" required>
-                            </label>
-                            <span id="feed-file-chosen" style="font-size: 0.85em; color: gray;">No file selected</span>
-                        </div>
-                        <button type="submit" style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Publish Post</button>
-                    </form>
-                </div>
-                <div id="feed-posts-stream" style="max-width: 600px; margin: 0 auto;"></div>
             </div>
         </main>
     </div>
 
     <div id="profile-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content" style="background: var(--bg-sidebar); color: var(--text-main);">
             <span class="close-modal" id="close-profile-modal">&times;</span>
             <img id="view-profile-avatar" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" class="avatar-lg">
             <h3 id="view-profile-name">Username</h3>
             <p id="view-profile-email">email@example.com</p>
-            <p id="view-profile-status" style="margin: 8px 0; color: #777; font-style: italic;"></p>
-            <button id="dm-start-btn" style="margin-top: 12px; width: 100%;">💬 Send Message</button>
+            <p id="view-profile-status" style="margin: 8px 0; color: #b9bbbe; font-style: italic;"></p>
+            <button id="dm-start-btn" style="margin-top: 12px; width: 100%; background: #5865f2; color:white; border:none; padding:8px; border-radius:4px; cursor:pointer;">💬 Send Direct Message</button>
         </div>
     </div>
 
     <div id="settings-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content" style="background: var(--bg-sidebar); color: var(--text-main);">
             <span class="close-modal" id="close-settings-modal">&times;</span>
-            <h3>Edit Profile Settings</h3>
+            <h3>Edit Profile Customizations</h3>
             <form id="settings-form">
-                <label>Change Profile Picture:</label>
+                <label>Update User Profile Avatar:</label>
                 <input type="file" id="settings-avatar-input" accept="image/*">
-                <label>Change Username/Display Name:</label>
-                <input type="text" id="settings-name-input" placeholder="Set your username">
-                <label>Update Status/Bio:</label>
-                <input type="text" id="settings-status-input" placeholder="What's on your mind?">
-                <button type="submit">Save Changes</button>
+                <label>Change Username Display Tag:</label>
+                <input type="text" id="settings-name-input" placeholder="Set display handle">
+                <label>Custom Bio Status:</label>
+                <input type="text" id="settings-status-input" placeholder="What's going down?">
+                <button type="submit" style="background:#43b581; color:white; border:none; padding:10px; width:100%; margin-top:10px; border-radius:4px; cursor:pointer;">Save Customizations</button>
             </form>
         </div>
     </div>
 
-    <script type="module" src="app.js?v=7"></script>
+    <script type="module" src="app.js?v=9"></script>
 </body>
 </html>
