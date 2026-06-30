@@ -73,22 +73,19 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// New Cloudinary Cloud Storage Uploader
+// Streamlined Cloudinary Cloud Storage Uploader using /auto/ endpoint
 async function uploadToCloudinary(fileObj) {
     if (!fileObj) return null;
 
-    // Placed your credentials directly here
     const cloudName = "ddvsercvm"; 
-    const uploadPreset = "494672922789378"; 
+    const uploadPreset = "my_preset"; 
 
     const formData = new FormData();
     formData.append("file", fileObj);
     formData.append("upload_preset", uploadPreset);
 
-    const resourceType = fileObj.type.startsWith('video/') ? 'video' : 'image';
-
     try {
-        const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, {
+        const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
             method: "POST",
             body: formData
         });
@@ -177,7 +174,7 @@ onAuthStateChanged(auth, async (user) => {
         listenForUserPresence();
     } else {
         currentUser = null;
-        authContainer.classList.remove('hidden');
+        authContainer.remove('hidden');
         appContainer.classList.add('hidden');
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
@@ -231,7 +228,6 @@ searchUserBtn.addEventListener('click', async () => {
     await showUserProfile(searchEmail);
 });
 
-// Direct Message Identification Connector
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
 }
@@ -297,7 +293,6 @@ settingsForm.addEventListener('submit', async (e) => {
     try {
         let photoURL = myAvatar.src;
         if (avatarFile) {
-            // Avatars can go to cloud storage now too to keep payloads light
             photoURL = await uploadToCloudinary(avatarFile) || myAvatar.src;
         }
 
@@ -350,7 +345,6 @@ chatForm.addEventListener('submit', async (e) => {
     messageInput.placeholder = "Uploading file asset to cloud service...";
 
     try {
-        // Direct stream pipe upload to Cloudinary setup
         const cloudUrl = await uploadToCloudinary(file);
         const fileType = file ? (file.type.startsWith('image/') ? 'image' : 'video') : null;
 
