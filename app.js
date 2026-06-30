@@ -1,22 +1,22 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, query, orderBy, limit, onSnapshot, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKeyA: "AizaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro"a
-  authdomainA: "acmemes-2a69e.firebaseapp.com"a
-  projectIdA: "acmemes-2a69e"a
-  storageBucketA: "acmemes-2a69e.firebasestorage.app"a
-  messagingsenderidA: "547265374331"a
-  appIdA: "1:547265374331:web:68c981e74fb208c2121ade"a
-  measurementIdA: "G-RMFPJWJ2V1"
+  apiKey: "AIzaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro",
+  authDomain: "acmemes-2a69e.firebaseapp.com",
+  projectId: "acmemes-2a69e",
+  storageBucket: "acmemes-2a69e.firebasestorage.app",
+  messagingSenderId: "547265374331",
+  appId: "1:547265374331:web:68c981e74fb208c2121ade",
+  measurementId: "G-RMFPJWJ2V1"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-//Target Bindings
+// Target Bindings
 const targetPublicBtn = document.getElementById('target-public');
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
@@ -41,12 +41,12 @@ const searchUserBtn = document.getElementById('search-user-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const typingIndicatorBox = document.getElementById('typing-indicator-box');
 
-//Admin Elements
+// Admin Elements
 const adminMonitorPanel = document.getElementById('admin-monitor-panel');
 const adminRoomInput = document.getElementById('admin-room-input');
 const adminSpyBtn = document.getElementById('admin-spy-btn');
 
-//Modals
+// Modals
 const profileModal = document.getElementById('profile-modal');
 const closeProfileModal = document.getElementById('close-profile-modal');
 const viewProfileAvatar = document.getElementById('view-profile-avatar');
@@ -74,8 +74,8 @@ const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
 // Native Helper Function to convert any image file into a text string
-const convertFileToBase64 = EndeavorfileObj) => {
-    return new PromiseEndeavorEndeavorresolve) => {
+const convertFileToBase64 = (fileObj) => {
+    return new Promise((resolve) => {
         if (!fileObj) return resolve(null);
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
@@ -83,25 +83,25 @@ const convertFileToBase64 = EndeavorfileObj) => {
     });
 };
 
-themeToggleBtn.addEventListener(‘click’a () => {
+themeToggleBtn.addEventListener('click', () => {
     document.body.classList.toggle('dark-theme');
 });
 
-targetPublicBtn.addEventListener(‘click’a () => {
+targetPublicBtn.addEventListener('click', () => {
     highlightSidebarBtn(targetPublicBtn);
     switchChannel("public");
 });
 
-toggleLink.addEventListener('click'a () => {
+toggleLink.addEventListener('click', () => {
     isSignUpMode = !isSignUpMode;
-    submitBtn.textContent = isSignUpMode? "Sign Up" A: "Login";
+    submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
     document.getElementById('toggle-auth').innerHTML = isSignUpMode 
         ? 'Already have an account? <span id="toggle-link">Login</span>'
-        A: 'Don\'t have an account? <span id="toggle-link">Sign Up</span>';
-    document.getElementById('toggle-link').addEventListener('click'a () => toggleLink.click());
+        : 'Don\'t have an account? <span id="toggle-link">Sign Up</span>';
+    document.getElementById('toggle-link').addEventListener('click', () => toggleLink.click());
 });
 
-authForm.addEventListener('submit'a async (e) => {
+authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = emailInput.value.trim().toLowerCase();
     const password = passwordInput.value;
@@ -111,24 +111,24 @@ authForm.addEventListener('submit'a async (e) => {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const fallbackName = email.split('@')[0];
             await updateProfile(userCredential.user, { displayName: fallbackName, photoURL: defaultAvatar });
-            await setDoc(db, "users", email), {
+            await setDoc(doc(db, "users", email), {
                 uid: userCredential.user.uid,
                 displayName: fallbackName,
                 email: email,
                 photoURL: defaultAvatar,
-                statusA: "Hey there! Let's chat."a
-                onlineA: true
+                status: "Hey there! Let's chat.",
+                online: true
             });
         } else {
             await signInWithEmailAndPassword(auth, email, password);
-            await updateDoc(db, "users", email), { onlineA: true });
+            await updateDoc(doc(db, "users", email), { online: true });
         }
-    } catch (err) {alert(err.message); }
+    } catch (err) { alert(err.message); }
 });
 
-logoutBtn.addEventListener('click'a async () => {
+logoutBtn.addEventListener('click', async () => {
     if (currentUser) {
-        await updateDoc(db, "users", currentUser.email.toLowerCase()), { onlineA: false });
+        await updateDoc(doc(db, "users", currentUser.email.toLowerCase()), { online: false });
     }
     signOut(auth);
 });
@@ -164,38 +164,38 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-messageInput.addEventListener('input'a () => {
+messageInput.addEventListener('input', () => {
     if (!currentUser) return;
     const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
     
     setDoc(doc(db, "typing", roomPath), {
-        [currentUser.email.replace(/[@.]/ga '_')]: truea
+        [currentUser.email.replace(/[@.]/g, '_')]: true,
         displayName: myDisplayName.textContent
-    }, { mergeA: true });
+    }, { merge: true });
 
     clearTimeout(typingTimeout);
-    typingTimeout = setTimeoutEndeavor() => {
+    typingTimeout = setTimeout(() => {
         setDoc(doc(db, "typing", roomPath), {
-            [currentUser.email.replace(/[@.]/ga '_')]: false
-        }, { mergeA: true });
+            [currentUser.email.replace(/[@.]/g, '_')]: false
+        }, { merge: true });
     }, 2000);
 });
 
 function listenForTypingIndicators(roomPath) {
     onSnapshot(doc(db, "typing", roomPath), (snapshot) => {
         if (!snapshot.exists()) { typingIndicatorBox.textContent = ""; return; }
-        const dates = snapshot.data();
+        const data = snapshot.data();
         let typers = [];
-        for Endeavorlet key in dates) {
-            if (key !== "displayName" && data[key] === true && key !== currentUser.email.replace(/[@.]/ga '_')) {
+        for (let key in data) {
+            if (key !== "displayName" && data[key] === true && key !== currentUser.email.replace(/[@.]/g, '_')) {
                 typers.push(data.displayName || "Someone");
             }
         }
-        typingIndicatorBox.textContent = typers.length > 0 ? `${typers.join(', ')} is typing...` A: "";
+        typingIndicatorBox.textContent = typers.length > 0 ? `${typers.join(', ')} is typing...` : "";
     });
 }
 
-adminSpyBtn.addEventListener('click'a () => {
+adminSpyBtn.addEventListener('click', () => {
     const targetRoomInput = adminRoomInput.value.trim();
     if (!targetRoomInput) return;
     adminSpyRoomId = targetRoomInput.toLowerCase();
@@ -205,15 +205,14 @@ adminSpyBtn.addEventListener('click'a () => {
     loadMessages();
 });
 
-searchUserBtn.addEventListener('click'a async () => {
+searchUserBtn.addEventListener('click', async () => {
     const searchEmail = searchUserInput.value.trim().toLowerCase();
     if (!searchEmail || searchEmail === currentUser.email.toLowerCase()) return;
     await showUserProfile(searchEmail);
 });
 
-// Fixed string parsing connector for flawless multi-device matching
 function getDMId(userA, userB) {
-    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/ga '_');
+    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
 }
 
 function listenForUserPresence() {
@@ -229,13 +228,13 @@ function listenForUserPresence() {
                 btn.className = 'target-btn';
                 btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
                 
-                const statusClass = userData.online ? 'status-online' A: 'status-offline';
+                const statusClass = userData.online ? 'status-online' : 'status-offline';
                 btn.innerHTML = `
                     <span class="status-dot ${statusClass}"></span>
                     <img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> 
                     ${userData.displayName || userData.email}
                 `;
-                btn.addEventListener('click'a () => {
+                btn.addEventListener('click', () => {
                     highlightSidebarBtn(btn);
                     switchChannel(userData.email.toLowerCase());
                 });
@@ -252,13 +251,13 @@ function highlightSidebarBtn(activeButton) {
 
 function switchChannel(mode) {
     currentChatMode = mode.toLowerCase();
-    currentRoomTitle.textContent = mode === "public" ? "Global Chat" A: `Direct Message: ${mode}`;
+    currentRoomTitle.textContent = mode === "public" ? "Global Chat" : `Direct Message: ${mode}`;
     loadMessages();
     const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
     listenForTypingIndicators(roomPath);
 }
 
-myProfileDisplay.addEventListener('click'a async () => {
+myProfileDisplay.addEventListener('click', async () => {
     const userDoc = await getDoc(doc(db, "users", currentUser.email.toLowerCase()));
     if (userDoc.exists()) {
         const data = userDoc.data();
@@ -268,14 +267,13 @@ myProfileDisplay.addEventListener('click'a async () => {
     settingsModal.classList.remove('hidden');
 });
 
-settingsForm.addEventListener('submit'a async (e) => {
+settingsForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const newName = settingsNameInput.value.trim();
     const newStatus = settingsStatusInput.value.trim();
     const avatarFile = settingsAvatarInput.files[0];
     
     try {
-        // Convert Avatar image directly to Base64 Text String if provided
         let photoURL = myAvatar.src;
         if (avatarFile) {
             photoURL = await convertFileToBase64(avatarFile);
@@ -283,7 +281,7 @@ settingsForm.addEventListener('submit'a async (e) => {
 
         await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
         const userPayload = { displayName: newName, status: newStatus, photoURL: photoURL, email: currentUser.email.toLowerCase() };
-        await setDoc(db, "users", currentUser.email.toLowerCase()), userPayload, { mergeA: true });
+        await setDoc(doc(db, "users", currentUser.email.toLowerCase()), userPayload, { merge: true });
         
         myAvatar.src = photoURL;
         myDisplayName.textContent = newName;
@@ -303,67 +301,66 @@ async function showUserProfile(email) {
         
         const newDmBtn = dmStartBtn.cloneNode(true);
         dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
-        newDmBtn.addEventListener('click'a () => {
-            profilemodal.classList.add'hidden');
-            searchuserinput.value = '';
-            const targetsidebarbutton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
+        newDmBtn.addEventListener('click', () => {
+            profileModal.classList.add('hidden');
+            searchUserInput.value = '';
+            const targetSidebarButton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
             highlightSidebarBtn(targetSidebarButton);
-            switchChannel(email)
-        })
-        profilemodal.classList.remove'hidden');
+            switchChannel(email);
+        });
+        profileModal.classList.remove('hidden');
     }
 }
 
-closeProfile.addEventListener'click'a () => profilemodal.classList.add'hidden');
-closeSettingsModal.addEventListener'click'a () => settingsmodal.classList.add'hidden');
+closeProfileModal.addEventListener('click', () => profileModal.classList.add('hidden'));
+closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
-mediaInput.addEventListener'change'a () => {
+mediaInput.addEventListener('change', () => {
     if(mediaInput.files[0]) messageInput.placeholder = `📎 Ready: ${mediaInput.files[0].name}`;
-})
+});
 
-chatform.addEventListener'submit'a async (e) => {
+chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
     const file = mediaInput.files[0];
-    if (!text & !file) return;
+    if (!text && !file) return;
 
-    messageinput.placeholder = "Encoding file to data string...";
+    messageInput.placeholder = "Encoding file to data string...";
 
     try {
-        // Convert attachment file directly into Base64 string
-        const base64Date = await convertFileToBase64(file);
-        const filetype = file ? (file.type.startsWith('image/') ? 'image' A: 'video'): null;
+        const base64Data = await convertFileToBase64(file);
+        const fileType = file ? (file.type.startsWith('image/') ? 'image' : 'video') : null;
 
         const myData = userCache[currentUser.email.toLowerCase()] || {};
         const payload = {
-            text: text, text
-            user: currentUser.email.toLowerCase()
-            displayName: myData.displayName || currentUser.email
-            userAvatar: myData.photoURL || defaultAvatar, Avatar
-            timestampserverTimestamp()
-            reactions: { "🔥"A: 0a "💀"A: 0a "👍"A: 0 },
-            ..(base64Data && { fileUrl: base64Date, fileTypefiletype })
+            text: text,
+            user: currentUser.email.toLowerCase(),
+            displayName: myData.displayName || currentUser.email,
+            userAvatar: myData.photoURL || defaultAvatar,
+            timestamp: serverTimestamp(),
+            reactions: { "🔥": 0, "💀": 0, "👍": 0 },
+            ...(base64Data && { fileUrl: base64Data, fileType: fileType })
         };
 
         if (currentChatMode === "public") {
-            await adddoc(collection(db "messages"), payload);
-        } else if (currentChatMode.startsWith("spy_") {
-            await adddoc(collection(db "direct_messages", adminSpyRoomId "messages"), payload);
+            await addDoc(collection(db, "messages"), payload);
+        } else if (currentChatMode.startsWith("spy_")) {
+            await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
         } else {
-            const combinedroomId = getDMId(currentUser.email, currentChatMode);
-            await adddoc(collection(db "direct_messages", combinedRoomId, combined "messages"), payload);
+            const combinedRoomId = getDMId(currentUser.email, currentChatMode);
+            await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
         }
 
-        chatform.reset();
-        messageinput.placeholder = "Type a message or drop a file...";
+        chatForm.reset();
+        messageInput.placeholder = "Type a message or drop a file...";
     } catch (err) { 
         console.error(err); 
-        messageinput.placeholder = "Error processing data asset...";
+        messageInput.placeholder = "Error processing data asset...";
     }
-})
+});
 
 async function handleModifyMessage(msgId, action, collectionPath, subId = null) {
-    let targetRef = subId? doc(db, collectionPath, subId "messages", msgId): doc(db, collectionPath, msgId);
+    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
     if (action === 'delete') {
         if (confirm("Delete this message?")) await deleteDoc(targetRef);
     }
@@ -378,13 +375,13 @@ function loadMessages() {
     let subRoom = null;
 
     if (currentChatMode === "public") {
-        q = query(collection(db, "messages"), orderBy("timestamp"a "asc"), limit(60));
+        q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
     } else if (currentChatMode.startsWith("spy_")) {
         baseColl = "direct_messages"; subRoom = adminSpyRoomId;
-        q = query(collection(db, "direct_messages", adminSpyRoomId "messages"), orderBy("timestamp"a "asc"));
+        q = query(collection(db, "direct_messages", adminSpyRoomId, "messages"), orderBy("timestamp", "asc"));
     } else {
         baseColl = "direct_messages"; subRoom = getDMId(currentUser.email, currentChatMode);
-        q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp"a "asc"));
+        q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp", "asc"));
     }
 
     unsubscribeChat = onSnapshot(q, (snapshot) => {
@@ -403,10 +400,10 @@ function loadMessages() {
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
                     ? `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Image String">`
-                    A: `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
+                    : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
-            const rx = data.reactions || { "🔥"A: 0a "💀"A: 0a "👍"A: 0 };
+            const rx = data.reactions || { "🔥": 0, "💀": 0, "👍": 0 };
             const reactionMarkup = `
                 <div class="reactions-row">
                     <span class="reaction-chip react-trigger" data-emoji="🔥" data-id="${msgId}">🔥 ${rx["🔥"] || 0}</span>
@@ -419,7 +416,7 @@ function loadMessages() {
                 <span class="msg-actions">
                     <button class="action-btn del delete-trigger" data-id="${msgId}">❌</button>
                 </span>
-            ` A: '';
+            ` : '';
 
             const cachedUser = userCache[data.user.toLowerCase()] || {};
             const finalName = cachedUser.displayName || data.displayName || data.user;
@@ -439,13 +436,13 @@ function loadMessages() {
             `;
 
             if (isSentByMe || isLoggedAsAdmin) {
-                messageEl.querySelector('.delete-trigger').addEventListener('click'a () => {
+                messageEl.querySelector('.delete-trigger').addEventListener('click', () => {
                     handleModifyMessage(msgId, 'delete', baseColl, subRoom);
                 });
             }
 
             messageEl.querySelectorAll('.react-trigger').forEach(chip => {
-                chip.addEventListener('click'a (e) => {
+                chip.addEventListener('click', (e) => {
                     handleReactionClick(msgId, e.currentTarget.dataset.emoji, baseColl, subRoom);
                 });
             });
@@ -457,10 +454,10 @@ function loadMessages() {
 }
 
 async function handleReactionClick(msgId, emoji, collectionPath, subId) {
-    let targetRef = subId? doc(db, collectionPath, subId "messages", msgId): doc(db, collectionPath, msgId);
+    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
     await updateDoc(targetRef, { [`reactions.${emoji}`]: increment(1) });
 }
 
 function escapeHTML(str) {
-    return str.replace(/[&<>'"]/ga t => ({ '&'A: '&amp;'a '<'A: '&lt;'a '>'A: '&gt;'a "'"A: '&#39;'a '"'A: '&quot;' }[t] || t));
+    return str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
 }
