@@ -174,7 +174,7 @@ onAuthStateChanged(auth, async (user) => {
         listenForUserPresence();
     } else {
         currentUser = null;
-        authContainer.remove('hidden');
+        authContainer.classList.remove('hidden');
         appContainer.classList.add('hidden');
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
@@ -415,9 +415,11 @@ function loadMessages() {
             
             let mediaMarkup = '';
             if (data.fileUrl) {
-                mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Asset Link">`
-                    : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
+                // If it ends with .mp4 or has a video stream pattern, render a video tag seamlessly
+                const isVideo = data.fileType === 'video' || data.fileUrl.match(/\.(mp4|webm|ogg|mov|mov)$/i);
+                mediaMarkup = isVideo 
+                    ? `<video src="${data.fileUrl}" class="media-attachment" controls></video>`
+                    : `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Asset Link">`;
             }
 
             const rx = data.reactions || { "🔥": 0, "💀": 0, "👍": 0 };
