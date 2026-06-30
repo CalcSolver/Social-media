@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, query, orderBy, limit, onSnapshot, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 const firebaseConfig = {
@@ -18,17 +18,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// DOM Navigation Buttons
+// Target Bindings
 const targetPublicBtn = document.getElementById('target-public');
-const targetFeedBtn = document.getElementById('target-feed');
-
-// Main Containers
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
 const messagingContainer = document.getElementById('messaging-container');
-const memeFeedContainer = document.getElementById('meme-feed-container');
-
-// Core Dom Bindings
 const authForm = document.getElementById('auth-form');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -46,18 +40,15 @@ const currentRoomTitle = document.getElementById('current-room-title');
 const usersList = document.getElementById('users-list');
 const searchUserInput = document.getElementById('search-user-input');
 const searchUserBtn = document.getElementById('search-user-btn');
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
+const typingIndicatorBox = document.getElementById('typing-indicator-box');
+const sortingContainer = document.getElementById('sorting-container');
+const feedSortSelect = document.getElementById('feed-sort-select');
 
 // Admin Elements
 const adminMonitorPanel = document.getElementById('admin-monitor-panel');
 const adminRoomInput = document.getElementById('admin-room-input');
 const adminSpyBtn = document.getElementById('admin-spy-btn');
-
-// Feed Form Elements
-const feedPostForm = document.getElementById('feed-post-form');
-const postCaptionInput = document.getElementById('post-caption-input');
-const feedMediaInput = document.getElementById('feed-media-input');
-const feedFileChosen = document.getElementById('feed-file-chosen');
-const feedPostsStream = document.getElementById('feed-posts-stream');
 
 // Modals
 const profileModal = document.getElementById('profile-modal');
@@ -67,7 +58,6 @@ const viewProfileName = document.getElementById('view-profile-name');
 const viewProfileEmail = document.getElementById('view-profile-email');
 const viewProfileStatus = document.getElementById('view-profile-status');
 const dmStartBtn = document.getElementById('dm-start-btn');
-
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsModal = document.getElementById('close-settings-modal');
 const settingsForm = document.getElementById('settings-form');
@@ -80,26 +70,26 @@ let currentUser = null;
 let currentChatMode = "public"; 
 let adminSpyRoomId = null;
 let unsubscribeChat = null;
-let unsubscribeFeed = null;
+let unsubscribePresence = null;
+let typingTimeout = null;
 
 const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Click Handlers for Sidebar Channel Navigation Buttons
+// Toggle UI Light/Dark Engine 
+themeToggleBtn.addEventListener('click', () => {
+    document.body.classList.toggle('dark-theme');
+});
+
 targetPublicBtn.addEventListener('click', () => {
     highlightSidebarBtn(targetPublicBtn);
-    messagingContainer.style.display = "flex";
-    memeFeedContainer.classList.add('hidden');
+    sortingContainer.classList.remove('hidden');
     switchChannel("public");
 });
 
-targetFeedBtn.addEventListener('click', () => {
-    highlightSidebarBtn(targetFeedBtn);
-    messagingContainer.style.display = "none";
-    memeFeedContainer.classList.remove('hidden');
-    currentRoomTitle.textContent = "Public Meme Feed";
-    loadMemeFeed();
+feedSortSelect.addEventListener('change', () => {
+    if (currentChatMode === "public") loadMessages();
 });
 
 toggleLink.addEventListener('click', () => {
@@ -126,17 +116,22 @@ authForm.addEventListener('submit', async (e) => {
                 displayName: fallbackName,
                 email: email,
                 photoURL: defaultAvatar,
-                status: "Hey there! I am using AcmeMes."
+                status: "Hey there! Let's chat.",
+                online: true
             });
         } else {
             await signInWithEmailAndPassword(auth, email, password);
+            await updateDoc(doc(db, "users", email), { online: true });
         }
-    } catch (err) {
-        alert(err.message);
-    }
+    } catch (err) { alert(err.message); }
 });
 
-logoutBtn.addEventListener('click', () => signOut(auth));
+logoutBtn.addEventListener('click', async () => {
+    if (currentUser) {
+        await updateDoc(doc(db, "users", currentUser.email.toLowerCase()), { online: false });
+    }
+    signOut(auth);
+});
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -156,57 +151,78 @@ onAuthStateChanged(auth, async (user) => {
             myDisplayName.textContent = data.displayName || user.email;
             myAvatar.src = data.photoURL || defaultAvatar;
             userCache[user.email.toLowerCase()] = data;
-        } else {
-            myDisplayName.textContent = user.email;
-            myAvatar.src = defaultAvatar;
         }
 
         targetPublicBtn.click(); 
-        loadActiveDMList();
+        listenForUserPresence();
     } else {
         currentUser = null;
         authContainer.classList.remove('hidden');
         appContainer.classList.add('hidden');
         if (unsubscribeChat) unsubscribeChat();
-        if (unsubscribeFeed) unsubscribeFeed();
+        if (unsubscribePresence) unsubscribePresence();
     }
 });
+
+// Typing Tracking Module
+messageInput.addEventListener('input', () => {
+    if (!currentUser) return;
+    const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
+    
+    setDoc(doc(db, "typing", roomPath), {
+        [currentUser.email.replace(/[@.]/g, '_')]: true,
+        displayName: myDisplayName.textContent
+    }, { merge: true });
+
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        setDoc(doc(db, "typing", roomPath), {
+            [currentUser.email.replace(/[@.]/g, '_')]: false
+        }, { merge: true });
+    }, 2000);
+});
+
+function listenForTypingIndicators(roomPath) {
+    onSnapshot(doc(db, "typing", roomPath), (snapshot) => {
+        if (!snapshot.exists()) { typingIndicatorBox.textContent = ""; return; }
+        const data = snapshot.data();
+        let typers = [];
+        for (let key in data) {
+            if (key !== "displayName" && data[key] === true && key !== currentUser.email.replace(/[@.]/g, '_')) {
+                typers.push(data.displayName || "Someone");
+            }
+        }
+        typingIndicatorBox.textContent = typers.length > 0 ? `${typers.join(', ')} is typing...` : "";
+    });
+}
 
 adminSpyBtn.addEventListener('click', () => {
     const targetRoomInput = adminRoomInput.value.trim();
     if (!targetRoomInput) return;
     
-    // Convert tracking string cleanly for mobile view matching
-    adminSpyRoomId = targetRoomInput.toLowerCase().replace(/[@.]/g, '_');
+    adminSpyRoomId = targetRoomInput.toLowerCase();
     currentChatMode = "spy_" + adminSpyRoomId;
-    
-    messagingContainer.style.display = "flex";
-    memeFeedContainer.classList.add('hidden');
+    sortingContainer.classList.add('hidden');
     highlightSidebarBtn(null);
-    currentRoomTitle.textContent = `Admin Intercept: ${adminSpyRoomId}`;
+    currentRoomTitle.textContent = `Intercept Pipeline: ${adminSpyRoomId}`;
     loadMessages();
 });
 
 searchUserBtn.addEventListener('click', async () => {
     const searchEmail = searchUserInput.value.trim().toLowerCase();
-    if (!searchEmail) return;
-    if (searchEmail === currentUser.email.toLowerCase()) {
-        alert("You cannot search for yourself!");
-        return;
-    }
+    if (!searchEmail || searchEmail === currentUser.email.toLowerCase()) return;
     await showUserProfile(searchEmail);
 });
 
-// FIXED FOR MOBILE SAFARI: Swapped out double underscores for standard hyphens
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
 }
 
-async function loadActiveDMList() {
-    usersList.innerHTML = '';
-    try {
-        const querySnapshot = await getDocs(collection(db, "users"));
-        querySnapshot.forEach((docSnap) => {
+function listenForUserPresence() {
+    if (unsubscribePresence) unsubscribePresence();
+    unsubscribePresence = onSnapshot(collection(db, "users"), (snapshot) => {
+        usersList.innerHTML = '';
+        snapshot.forEach((docSnap) => {
             const userData = docSnap.data();
             userCache[userData.email.toLowerCase()] = userData;
             
@@ -214,19 +230,22 @@ async function loadActiveDMList() {
                 const btn = document.createElement('button');
                 btn.className = 'target-btn';
                 btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
-                btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
+                
+                const statusClass = userData.online ? 'status-online' : 'status-offline';
+                btn.innerHTML = `
+                    <span class="status-dot ${statusClass}"></span>
+                    <img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> 
+                    ${userData.displayName || userData.email}
+                `;
                 btn.addEventListener('click', () => {
-                    messagingContainer.style.display = "flex";
-                    memeFeedContainer.classList.add('hidden');
+                    sortingContainer.classList.add('hidden');
                     highlightSidebarBtn(btn);
                     switchChannel(userData.email.toLowerCase());
                 });
                 usersList.appendChild(btn);
             }
         });
-    } catch (err) {
-        console.error(err);
-    }
+    });
 }
 
 function highlightSidebarBtn(activeButton) {
@@ -238,6 +257,8 @@ function switchChannel(mode) {
     currentChatMode = mode.toLowerCase();
     currentRoomTitle.textContent = mode === "public" ? "Global Chat" : `Direct Message: ${mode}`;
     loadMessages();
+    const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
+    listenForTypingIndicators(roomPath);
 }
 
 myProfileDisplay.addEventListener('click', async () => {
@@ -265,30 +286,19 @@ settingsForm.addEventListener('submit', async (e) => {
         }
 
         await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
-        const userPayload = { displayName: newName, status: newStatus, photoURL: photoURL, email: currentUser.email.toLowerCase(), uid: currentUser.uid };
+        const userPayload = { displayName: newName, status: newStatus, photoURL: photoURL, email: currentUser.email.toLowerCase() };
         await setDoc(doc(db, "users", currentUser.email.toLowerCase()), userPayload, { merge: true });
-        userCache[currentUser.email.toLowerCase()] = userPayload;
-
+        
         myAvatar.src = photoURL;
         myDisplayName.textContent = newName;
         settingsModal.classList.add('hidden');
         settingsForm.reset();
-        loadActiveDMList(); 
-        loadMessages(); 
-    } catch (err) {
-        alert(err.message);
-    }
+    } catch (err) { alert(err.message); }
 });
 
 async function showUserProfile(email) {
     email = email.toLowerCase();
     let data = userCache[email];
-    if (!data) {
-        const userDoc = await getDoc(doc(db, "users", email));
-        if (userDoc.exists()) { data = userDoc.data(); userCache[email] = data; }
-        else { alert("No student registered with that email address!"); return; }
-    }
-
     if (data) {
         viewProfileAvatar.src = data.photoURL || defaultAvatar;
         viewProfileName.textContent = data.displayName || email;
@@ -300,11 +310,8 @@ async function showUserProfile(email) {
         newDmBtn.addEventListener('click', () => {
             profileModal.classList.add('hidden');
             searchUserInput.value = '';
-            messagingContainer.style.display = "flex";
-            memeFeedContainer.classList.add('hidden');
-            
-            const targetBtnId = `sidebar-${email.replace(/[@.]/g, '-')}`;
-            const targetSidebarButton = document.getElementById(targetBtnId);
+            sortingContainer.classList.add('hidden');
+            const targetSidebarButton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
             highlightSidebarBtn(targetSidebarButton);
             switchChannel(email);
         });
@@ -316,11 +323,7 @@ closeProfileModal.addEventListener('click', () => profileModal.classList.add('hi
 closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
 mediaInput.addEventListener('change', () => {
-    if(mediaInput.files[0]) messageInput.placeholder = `📎 File: ${mediaInput.files[0].name}`;
-});
-
-feedMediaInput.addEventListener('change', () => {
-    if(feedMediaInput.files[0]) feedFileChosen.textContent = feedMediaInput.files[0].name;
+    if(mediaInput.files[0]) messageInput.placeholder = `📎 File ready: ${mediaInput.files[0].name}`;
 });
 
 chatForm.addEventListener('submit', async (e) => {
@@ -334,7 +337,7 @@ chatForm.addEventListener('submit', async (e) => {
 
     try {
         if (file) {
-            messageInput.placeholder = "Uploading file asset...";
+            messageInput.placeholder = "Uploading to Cloud Storage...";
             const fileRef = ref(storage, `chats/${Date.now()}_${file.name}`);
             const uploadSnapshot = await uploadBytes(fileRef, file);
             fileUrl = await getDownloadURL(uploadSnapshot.ref);
@@ -348,6 +351,8 @@ chatForm.addEventListener('submit', async (e) => {
             displayName: myData.displayName || currentUser.email,
             userAvatar: myData.photoURL || defaultAvatar,
             timestamp: serverTimestamp(),
+            score: 0,
+            reactions: { "🔥": 0, "💀": 0, "👍": 0 },
             ...(fileUrl && { fileUrl, fileType })
         };
 
@@ -356,32 +361,14 @@ chatForm.addEventListener('submit', async (e) => {
         } else if (currentChatMode.startsWith("spy_")) {
             await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
         } else {
-            // FIXED FOR MOBILE CASE-SENSITIVITY: Sanitize both inputs to lowercase immediately
-            const combinedRoomId = getDMId(currentUser.email.toLowerCase(), currentChatMode.toLowerCase());
+            const combinedRoomId = getDMId(currentUser.email, currentChatMode);
             await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
         }
 
         chatForm.reset();
-        messageInput.placeholder = "Type a message or attach a file...";
-    } catch (err) {
-        console.error(err);
-    }
+        messageInput.placeholder = "Type a message or drop a file...";
+    } catch (err) { console.error(err); }
 });
-
-async function handleModifyMessage(msgId, currentText, action, collectionPath, subId = null) {
-    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
-
-    if (action === 'delete') {
-        if (confirm("Are you sure you want to delete this message?")) {
-            await deleteDoc(targetRef);
-        }
-    } else if (action === 'edit') {
-        const newText = prompt("Edit your message:", currentText);
-        if (newText && newText.trim() !== currentText) {
-            await updateDoc(targetRef, { text: newText.trim() });
-        }
-    }
-}
 
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
@@ -391,16 +378,15 @@ function loadMessages() {
     let baseColl = "messages";
     let subRoom = null;
 
+    const sortField = (currentChatMode === "public" && feedSortSelect.value === "top") ? "score" : "timestamp";
+
     if (currentChatMode === "public") {
-        q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
+        q = query(collection(db, "messages"), orderBy(sortField, sortField === "score" ? "desc" : "asc"), limit(60));
     } else if (currentChatMode.startsWith("spy_")) {
-        baseColl = "direct_messages";
-        subRoom = adminSpyRoomId;
+        baseColl = "direct_messages"; subRoom = adminSpyRoomId;
         q = query(collection(db, "direct_messages", adminSpyRoomId, "messages"), orderBy("timestamp", "asc"));
     } else {
-        baseColl = "direct_messages";
-        // FIXED FOR MOBILE CASE-SENSITIVITY: Sanitize both parameters to lowercase
-        subRoom = getDMId(currentUser.email.toLowerCase(), currentChatMode.toLowerCase());
+        baseColl = "direct_messages"; subRoom = getDMId(currentUser.email, currentChatMode);
         q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp", "asc"));
     }
 
@@ -413,143 +399,126 @@ function loadMessages() {
             const isSentByMe = data.user === currentUser.email.toLowerCase();
             const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
             
-            messageEl.className = `msg ${isSentByMe ? 'sent' : 'received'}`;
+            messageEl.className = "msg-wrapper";
+            messageEl.style = "display: flex; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius:6px;";
             
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Meme Attachment">`
-                    : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
+                    ? `<img src="${data.fileUrl}" class="media-attachment" style="max-width:100%; max-height:300px; border-radius:4px; margin-top:8px;" alt="Attached Asset">`
+                    : `<video src="${data.fileUrl}" class="media-attachment" style="max-width:100%; max-height:300px; border-radius:4px; margin-top:8px;" controls></video>`;
             }
 
-            const actionControlsMarkup = (isSentByMe || isLoggedAsAdmin) ? `
-                <span class="msg-actions">
-                    ${isSentByMe ? `<button class="action-btn edit-trigger" data-id="${msgId}" data-text="${escapeHTML(data.text || '')}">✏️</button>` : ''}
-                    <button class="action-btn del delete-trigger" data-id="${msgId}">❌</button>
-                </span>
-            ` : '';
+            // Custom Reddit Upvote Score Container Markup
+            const voteScoreMarkup = `
+                <div class="score-box">
+                    <button class="vote-btn upvote-trigger" data-id="${msgId}">▲</button>
+                    <span style="font-size:0.9em;">${data.score || 0}</span>
+                    <button class="vote-btn downvote-trigger" data-id="${msgId}">▼</button>
+                </div>
+            `;
+
+            // Emoji Chips Markup
+            const rx = data.reactions || { "🔥": 0, "💀": 0, "👍": 0 };
+            const reactionMarkup = `
+                <div class="reactions-row">
+                    <span class="reaction-chip react-trigger" data-emoji="🔥" data-id="${msgId}">🔥 ${rx["🔥"] || 0}</span>
+                    <span class="reaction-chip react-trigger" data-emoji="💀" data-id="${msgId}">💀 ${rx["💀"] || 0}</span>
+                    <span class="reaction-chip react-trigger" data-emoji="👍" data-id="${msgId}">👍 ${rx["👍"] || 0}</span>
+                </div>
+            `;
 
             const cachedUser = userCache[data.user.toLowerCase()] || {};
             const finalName = cachedUser.displayName || data.displayName || data.user;
             const finalAvatar = cachedUser.photoURL || data.userAvatar || defaultAvatar;
 
             messageEl.innerHTML = `
-                <div class="msg-header-info" data-email="${data.user}">
-                    <img src="${finalAvatar}" class="avatar-sm">
-                    <span class="msg-user">${finalName}</span>
-                    ${actionControlsMarkup}
+                ${voteScoreMarkup}
+                <div style="flex:1;">
+                    <div class="msg-header-info" data-email="${data.user}" style="cursor:pointer; display:flex; align-items:center; gap:5px;">
+                        <img src="${finalAvatar}" class="avatar-sm" style="width:25px; height:25px; border-radius:50%;">
+                        <strong style="color:#fff;">${finalName}</strong>
+                    </div>
+                    <div class="msg-text" style="margin-top:4px; color:#dcddde;">${escapeHTML(data.text || '')}</div>
+                    ${mediaMarkup}
+                    ${reactionMarkup}
+                    
+                    <div class="comments-section">
+                        <div id="comments-list-${msgId}" style="margin-bottom:5px; display:flex; flex-direction:column; gap:4px;"></div>
+                        <div style="display:flex; gap:5px;">
+                            <input type="text" id="comment-input-${msgId}" placeholder="Write a thread reply..." style="flex:1; font-size:0.85em; background:#202225; color:#fff; border:1px solid #4f545c; padding:3px; border-radius:3px;">
+                            <button class="comment-submit-btn" data-id="${msgId}" style="font-size:0.85em; padding:3px 8px; cursor:pointer;">Reply</button>
+                        </div>
+                    </div>
                 </div>
-                <span class="msg-text">${escapeHTML(data.text || '')}</span>
-                ${mediaMarkup}
             `;
 
-            if (isSentByMe) {
-                const editBtn = messageEl.querySelector('.edit-trigger');
-                if (editBtn) editBtn.addEventListener('click', (e) => {
-                    handleModifyMessage(e.target.dataset.id, e.target.dataset.text, 'edit', baseColl, subRoom);
+            // Setup Event Routing Bindings Dynamically
+            messageEl.querySelector('.upvote-trigger').addEventListener('click', () => handleVote(msgId, 1, baseColl, subRoom));
+            messageEl.querySelector('.downvote-trigger').addEventListener('click', () => handleVote(msgId, -1, baseColl, subRoom));
+            
+            messageEl.querySelectorAll('.react-trigger').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    handleReactionClick(msgId, e.currentTarget.dataset.emoji, baseColl, subRoom);
                 });
-            }
-            if (isSentByMe || isLoggedAsAdmin) {
-                messageEl.querySelector('.delete-trigger').addEventListener('click', (e) => {
-                    handleModifyMessage(e.target.dataset.id, null, 'delete', baseColl, subRoom);
-                });
-            }
+            });
 
-            messageEl.querySelector('.msg-header-info').addEventListener('click', (e) => {
-                showUserProfile(e.currentTarget.getAttribute('data-email'));
+            messageEl.querySelector('.comment-submit-btn').addEventListener('click', (e) => {
+                const mId = e.target.dataset.id;
+                const inputField = document.getElementById(`comment-input-${mId}`);
+                handlePostComment(mId, inputField.value, baseColl, subRoom);
+                inputField.value = '';
             });
 
             chatMessages.appendChild(messageEl);
+            loadNestedComments(msgId, baseColl, subRoom);
         });
         chatMessages.scrollTop = chatMessages.scrollHeight;
-    }, (error) => {
-        console.error(error);
     });
 }
 
-feedPostForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const caption = postCaptionInput.value.trim();
-    const file = feedMediaInput.files[0];
-    if (!file) return;
+// Global Core Feature Functions
+async function handleVote(msgId, amount, collectionPath, subId) {
+    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
+    await updateDoc(targetRef, { score: increment(amount) });
+}
 
-    try {
-        const submitButton = feedPostForm.querySelector('button[type="submit"]');
-        submitButton.textContent = "Uploading to Cloud Storage...";
-        submitButton.disabled = true;
+async function handleReactionClick(msgId, emoji, collectionPath, subId) {
+    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
+    await updateDoc(targetRef, { [`reactions.${emoji}`]: increment(1) });
+}
 
-        const storageRef = ref(storage, `feeds/${Date.now()}_${file.name}`);
-        const snap = await uploadBytes(storageRef, file);
-        const imageUrl = await getDownloadURL(snap.ref);
+async function handlePostComment(msgId, commentText, collectionPath, subId) {
+    if (!commentText.trim()) return;
+    let commentsCollRef = subId 
+        ? collection(db, collectionPath, subId, "messages", msgId, "comments") 
+        : collection(db, collectionPath, msgId, "comments");
 
-        const myData = userCache[currentUser.email.toLowerCase()] || {};
-        await addDoc(collection(db, "posts"), {
-            caption: caption,
-            imageUrl: imageUrl,
-            user: currentUser.email.toLowerCase(),
-            displayName: myData.displayName || currentUser.email,
-            userAvatar: myData.photoURL || defaultAvatar,
-            timestamp: serverTimestamp(),
-            likes: 0
-        });
+    await addDoc(commentsCollRef, {
+        text: commentText.trim(),
+        user: myDisplayName.textContent,
+        timestamp: Date.now()
+    });
+}
 
-        feedPostForm.reset();
-        feedFileChosen.textContent = "No file selected";
-        submitButton.textContent = "Publish Post";
-        submitButton.disabled = false;
-    } catch (err) {
-        alert("Upload Error: " + err.message);
-    }
-});
+function loadNestedComments(msgId, collectionPath, subId) {
+    let commentsCollRef = subId 
+        ? collection(db, collectionPath, subId, "messages", msgId, "comments") 
+        : collection(db, collectionPath, msgId, "comments");
 
-function loadMemeFeed() {
-    if (unsubscribeFeed) unsubscribeFeed();
-    const q = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(25));
-    
-    unsubscribeFeed = onSnapshot(q, (snapshot) => {
-        feedPostsStream.innerHTML = '';
-        snapshot.forEach((docSnap) => {
-            const post = docSnap.data();
-            const postId = docSnap.id;
-            const postCard = document.createElement('div');
-            const isMyPost = post.user === currentUser.email.toLowerCase();
-            const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-
-            postCard.className = 'meme-post-card';
-            postCard.style = "background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.05);";
-
-            const cachedUser = userCache[post.user.toLowerCase()] || {};
-            const finalName = cachedUser.displayName || post.displayName || post.user;
-            const finalAvatar = cachedUser.photoURL || post.userAvatar || defaultAvatar;
-
-            const deletePostMarkup = (isMyPost || isLoggedAsAdmin) ? `
-                <button class="delete-post-btn" data-id="${postId}" style="position: absolute; top: 15px; right: 15px; background: none; border: none; cursor: pointer; color: #dc3545; font-size: 1.2em;">❌</button>
-            ` : '';
-
-            postCard.innerHTML = `
-                <div class="post-user-header" style="display:flex; align-items:center; margin-bottom:10px; cursor:pointer;" data-email="${post.user}">
-                    <img src="${finalAvatar}" class="avatar-sm" style="margin-right:10px; width:35px; height:35px; border-radius:50%;">
-                    <strong>${finalName}</strong>
-                </div>
-                ${deletePostMarkup}
-                <p class="post-caption" style="margin-top:0; margin-bottom:12px; font-size:1.1em; color:#111; font-weight: 500;">${escapeHTML(post.caption)}</p>
-                <img src="${post.imageUrl}" style="width:100%; max-height:500px; object-fit:contain; border-radius:6px; background:#fafafa; border: 1px solid #eaeaea;">
-            `;
-
-            if (isMyPost || isLoggedAsAdmin) {
-                postCard.querySelector('.delete-post-btn').addEventListener('click', async (e) => {
-                    if (confirm("Delete this meme from public feed?")) {
-                        await deleteDoc(doc(db, "posts", e.target.closest('.delete-post-btn').dataset.id));
-                    }
-                });
-            }
-
-            postCard.querySelector('.post-user-header').addEventListener('click', (e) => {
-                showUserProfile(e.currentTarget.getAttribute('data-email'));
+    const q = query(commentsCollRef, orderBy("timestamp", "asc"));
+    onSnapshot(q, (snapshot) => {
+        const listEl = document.getElementById(`comments-list-${msgId}`);
+        if(listEl) {
+            listEl.innerHTML = '';
+            snapshot.forEach(cSnap => {
+                const cData = cSnap.data();
+                const div = document.createElement('div');
+                div.style = "background:rgba(255,255,255,0.02); padding:4px; border-radius:4px; font-size:0.9em; color:#b9bbbe;";
+                div.innerHTML = `<span style="color:#43b581; font-weight:bold;">${cData.user}:</span> ${escapeHTML(cData.text)}`;
+                listEl.appendChild(div);
             });
-
-            feedPostsStream.appendChild(postCard);
-        });
+        }
     });
 }
 
