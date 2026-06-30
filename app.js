@@ -79,7 +79,7 @@ async function uploadToCloudinary(fileObj) {
 
     // Placed your credentials directly here
     const cloudName = "ddvsercvm"; 
-    const uploadPreset = "my_preset"; 
+    const uploadPreset = "494672922789378"; 
 
     const formData = new FormData();
     formData.append("file", fileObj);
