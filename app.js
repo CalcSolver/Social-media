@@ -73,15 +73,35 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Native Helper Function to convert any image file into a text string
-const convertFileToBase64 = (fileObj) => {
-    return new Promise((resolve) => {
-        if (!fileObj) return resolve(null);
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(fileObj);
-    });
-};
+// New Cloudinary Cloud Storage Uploader
+async function uploadToCloudinary(fileObj) {
+    if (!fileObj) return null;
+
+    // Placed your credentials directly here
+    const cloudName = "ddvsercvm"; 
+    const uploadPreset = "494672922789378"; 
+
+    const formData = new FormData();
+    formData.append("file", fileObj);
+    formData.append("upload_preset", uploadPreset);
+
+    const resourceType = fileObj.type.startsWith('video/') ? 'video' : 'image';
+
+    try {
+        const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, {
+            method: "POST",
+            body: formData
+        });
+
+        if (!response.ok) throw new Error("Cloudinary upload failed");
+
+        const data = await response.json();
+        return data.secure_url; 
+    } catch (err) {
+        console.error("Cloudinary Error:", err);
+        return null;
+    }
+}
 
 themeToggleBtn.addEventListener('click', () => {
     document.body.classList.toggle('dark-theme');
@@ -211,6 +231,7 @@ searchUserBtn.addEventListener('click', async () => {
     await showUserProfile(searchEmail);
 });
 
+// Direct Message Identification Connector
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
 }
@@ -276,7 +297,8 @@ settingsForm.addEventListener('submit', async (e) => {
     try {
         let photoURL = myAvatar.src;
         if (avatarFile) {
-            photoURL = await convertFileToBase64(avatarFile);
+            // Avatars can go to cloud storage now too to keep payloads light
+            photoURL = await uploadToCloudinary(avatarFile) || myAvatar.src;
         }
 
         await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
@@ -325,10 +347,11 @@ chatForm.addEventListener('submit', async (e) => {
     const file = mediaInput.files[0];
     if (!text && !file) return;
 
-    messageInput.placeholder = "Encoding file to data string...";
+    messageInput.placeholder = "Uploading file asset to cloud service...";
 
     try {
-        const base64Data = await convertFileToBase64(file);
+        // Direct stream pipe upload to Cloudinary setup
+        const cloudUrl = await uploadToCloudinary(file);
         const fileType = file ? (file.type.startsWith('image/') ? 'image' : 'video') : null;
 
         const myData = userCache[currentUser.email.toLowerCase()] || {};
@@ -339,7 +362,7 @@ chatForm.addEventListener('submit', async (e) => {
             userAvatar: myData.photoURL || defaultAvatar,
             timestamp: serverTimestamp(),
             reactions: { "🔥": 0, "💀": 0, "👍": 0 },
-            ...(base64Data && { fileUrl: base64Data, fileType: fileType })
+            ...(cloudUrl && { fileUrl: cloudUrl, fileType: fileType })
         };
 
         if (currentChatMode === "public") {
@@ -399,7 +422,7 @@ function loadMessages() {
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'image' 
-                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Image String">`
+                    ? `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Asset Link">`
                     : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
