@@ -18,9 +18,17 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// DOM Elements
+// DOM Navigation Buttons
+const targetPublicBtn = document.getElementById('target-public');
+const targetFeedBtn = document.getElementById('target-feed');
+
+// Main Containers
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
+const messagingContainer = document.getElementById('messaging-container');
+const memeFeedContainer = document.getElementById('meme-feed-container');
+
+// Core Dom Bindings
 const authForm = document.getElementById('auth-form');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -35,7 +43,6 @@ const myProfileDisplay = document.getElementById('my-profile-display');
 const myAvatar = document.getElementById('my-avatar');
 const myDisplayName = document.getElementById('my-display-name');
 const currentRoomTitle = document.getElementById('current-room-title');
-const targetPublicBtn = document.getElementById('target-public');
 const usersList = document.getElementById('users-list');
 const searchUserInput = document.getElementById('search-user-input');
 const searchUserBtn = document.getElementById('search-user-btn');
@@ -45,13 +52,7 @@ const adminMonitorPanel = document.getElementById('admin-monitor-panel');
 const adminRoomInput = document.getElementById('admin-room-input');
 const adminSpyBtn = document.getElementById('admin-spy-btn');
 
-// View Panel Switching Components
-const viewChatBtn = document.getElementById('view-chat-btn');
-const viewFeedBtn = document.getElementById('view-feed-btn');
-const messagingContainer = document.getElementById('messaging-container');
-const memeFeedContainer = document.getElementById('meme-feed-container');
-
-// Feed Elements
+// Feed Form Elements
 const feedPostForm = document.getElementById('feed-post-form');
 const postCaptionInput = document.getElementById('post-caption-input');
 const feedMediaInput = document.getElementById('feed-media-input');
@@ -85,18 +86,16 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// View Switching Handlers
-viewChatBtn.addEventListener('click', () => {
-    viewChatBtn.classList.add('active');
-    viewFeedBtn.classList.remove('active');
+// Click Handlers for Sidebar Channel Navigation Buttons
+targetPublicBtn.addEventListener('click', () => {
+    highlightSidebarBtn(targetPublicBtn);
     messagingContainer.style.display = "flex";
     memeFeedContainer.classList.add('hidden');
-    currentRoomTitle.textContent = currentChatMode === "public" ? "Global Chat" : (currentChatMode.startsWith("spy_") ? `Admin Intercept: ${adminSpyRoomId}` : `Direct Message: ${currentChatMode}`);
+    switchChannel("public");
 });
 
-viewFeedBtn.addEventListener('click', () => {
-    viewFeedBtn.classList.add('active');
-    viewChatBtn.classList.remove('active');
+targetFeedBtn.addEventListener('click', () => {
+    highlightSidebarBtn(targetFeedBtn);
     messagingContainer.style.display = "none";
     memeFeedContainer.classList.remove('hidden');
     currentRoomTitle.textContent = "Public Meme Feed";
@@ -145,7 +144,6 @@ onAuthStateChanged(auth, async (user) => {
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
         
-        // Show administrative tools to the owner account
         if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
             adminMonitorPanel.classList.remove('hidden');
         } else {
@@ -163,7 +161,7 @@ onAuthStateChanged(auth, async (user) => {
             myAvatar.src = defaultAvatar;
         }
 
-        switchChannel("public");
+        targetPublicBtn.click(); // Reset layout clean to Global Chat on entry
         loadActiveDMList();
     } else {
         currentUser = null;
@@ -174,15 +172,15 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// Admin Intercept Engine Event Hook
 adminSpyBtn.addEventListener('click', () => {
     const targetRoomInput = adminRoomInput.value.trim();
     if (!targetRoomInput) return;
     
-    // Clean string to compute matching document token paths
     adminSpyRoomId = targetRoomInput.toLowerCase().replace(/[@.]/g, '_');
     currentChatMode = "spy_" + adminSpyRoomId;
-    viewChatBtn.click();
+    
+    messagingContainer.style.display = "flex";
+    memeFeedContainer.classList.add('hidden');
     highlightSidebarBtn(null);
     currentRoomTitle.textContent = `Admin Intercept: ${adminSpyRoomId}`;
     loadMessages();
@@ -216,7 +214,8 @@ async function loadActiveDMList() {
                 btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
                 btn.innerHTML = `<img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> ${userData.displayName || userData.email}`;
                 btn.addEventListener('click', () => {
-                    viewChatBtn.click();
+                    messagingContainer.style.display = "flex";
+                    memeFeedContainer.classList.add('hidden');
                     highlightSidebarBtn(btn);
                     switchChannel(userData.email.toLowerCase());
                 });
@@ -232,12 +231,6 @@ function highlightSidebarBtn(activeButton) {
     document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('active'));
     if (activeButton) activeButton.classList.add('active');
 }
-
-targetPublicBtn.addEventListener('click', () => {
-    viewChatBtn.click();
-    highlightSidebarBtn(targetPublicBtn);
-    switchChannel("public");
-});
 
 function switchChannel(mode) {
     currentChatMode = mode.toLowerCase();
@@ -305,7 +298,9 @@ async function showUserProfile(email) {
         newDmBtn.addEventListener('click', () => {
             profileModal.classList.add('hidden');
             searchUserInput.value = '';
-            viewChatBtn.click();
+            messagingContainer.style.display = "flex";
+            memeFeedContainer.classList.add('hidden');
+            
             const targetBtnId = `sidebar-${email.replace(/[@.]/g, '-')}`;
             const targetSidebarButton = document.getElementById(targetBtnId);
             highlightSidebarBtn(targetSidebarButton);
@@ -364,20 +359,14 @@ chatForm.addEventListener('submit', async (e) => {
         }
 
         chatForm.reset();
-        messageInput.placeholder = "Type a message or attach a file... ";
+        messageInput.placeholder = "Type a message or attach a file...";
     } catch (err) {
         console.error(err);
     }
 });
 
-// Dynamic Message Modification Handlers (Edit/Delete Actions Engine)
 async function handleModifyMessage(msgId, currentText, action, collectionPath, subId = null) {
-    let targetRef;
-    if (subId) {
-        targetRef = doc(db, collectionPath, subId, "messages", msgId);
-    } else {
-        targetRef = doc(db, collectionPath, msgId);
-    }
+    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
 
     if (action === 'delete') {
         if (confirm("Are you sure you want to delete this message?")) {
@@ -396,19 +385,16 @@ function loadMessages() {
     chatMessages.innerHTML = '';
 
     let q;
-    let isDM = false;
     let baseColl = "messages";
     let subRoom = null;
 
     if (currentChatMode === "public") {
         q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
     } else if (currentChatMode.startsWith("spy_")) {
-        isDM = true;
         baseColl = "direct_messages";
         subRoom = adminSpyRoomId;
         q = query(collection(db, "direct_messages", adminSpyRoomId, "messages"), orderBy("timestamp", "asc"));
     } else {
-        isDM = true;
         baseColl = "direct_messages";
         subRoom = getDMId(currentUser.email, currentChatMode);
         q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp", "asc"));
@@ -432,7 +418,6 @@ function loadMessages() {
                     : `<video src="${data.fileUrl}" class="media-attachment" controls></video>`;
             }
 
-            // Expose Edit/Delete access nodes explicitly if owner or supreme admin identity match
             const actionControlsMarkup = (isSentByMe || isLoggedAsAdmin) ? `
                 <span class="msg-actions">
                     ${isSentByMe ? `<button class="action-btn edit-trigger" data-id="${msgId}" data-text="${escapeHTML(data.text || '')}">✏️</button>` : ''}
@@ -454,7 +439,6 @@ function loadMessages() {
                 ${mediaMarkup}
             `;
 
-            // Operational event hooks assignment
             if (isSentByMe) {
                 const editBtn = messageEl.querySelector('.edit-trigger');
                 if (editBtn) editBtn.addEventListener('click', (e) => {
@@ -479,6 +463,7 @@ function loadMessages() {
     });
 }
 
+// Feed Submitter Handler Module
 feedPostForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const caption = postCaptionInput.value.trim();
@@ -486,7 +471,10 @@ feedPostForm.addEventListener('submit', async (e) => {
     if (!file) return;
 
     try {
-        postCaptionInput.placeholder = "Uploading to public feed...";
+        const submitButton = feedPostForm.querySelector('button[type="submit"]');
+        submitButton.textContent = "Uploading to Cloud Storage...";
+        submitButton.disabled = true;
+
         const storageRef = ref(storage, `feeds/${Date.now()}_${file.name}`);
         const snap = await uploadBytes(storageRef, file);
         const imageUrl = await getDownloadURL(snap.ref);
@@ -504,11 +492,14 @@ feedPostForm.addEventListener('submit', async (e) => {
 
         feedPostForm.reset();
         feedFileChosen.textContent = "No file selected";
+        submitButton.textContent = "Publish Post";
+        submitButton.disabled = false;
     } catch (err) {
-        alert(err.message);
+        alert("Upload Error: " + err.message);
     }
 });
 
+// Stream Processor: Chronological Public Feed Pipeline
 function loadMemeFeed() {
     if (unsubscribeFeed) unsubscribeFeed();
     const q = query(collection(db, "posts"), orderBy("timestamp", "desc"), limit(25));
@@ -523,14 +514,14 @@ function loadMemeFeed() {
             const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
             postCard.className = 'meme-post-card';
-            postCard.style = "background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; position: relative;";
+            postCard.style = "background: white; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.05);";
 
             const cachedUser = userCache[post.user.toLowerCase()] || {};
             const finalName = cachedUser.displayName || post.displayName || post.user;
             const finalAvatar = cachedUser.photoURL || post.userAvatar || defaultAvatar;
 
             const deletePostMarkup = (isMyPost || isLoggedAsAdmin) ? `
-                <button class="delete-post-btn" data-id="${postId}" style="position: absolute; top: 15px; right: 15px; background: none; border: none; cursor: pointer; color: #dc3545;">❌</button>
+                <button class="delete-post-btn" data-id="${postId}" style="position: absolute; top: 15px; right: 15px; background: none; border: none; cursor: pointer; color: #dc3545; font-size: 1.2em;">❌</button>
             ` : '';
 
             postCard.innerHTML = `
@@ -539,14 +530,14 @@ function loadMemeFeed() {
                     <strong>${finalName}</strong>
                 </div>
                 ${deletePostMarkup}
-                <p class="post-caption" style="margin-top:0; margin-bottom:12px; font-size:1.05em; color:#222;">${escapeHTML(post.caption)}</p>
-                <img src="${post.imageUrl}" style="width:100%; max-height:450px; object-fit:contain; border-radius:6px; background:#fafafa; border: 1px solid #eaeaea;">
+                <p class="post-caption" style="margin-top:0; margin-bottom:12px; font-size:1.1em; color:#111; font-weight: 500;">${escapeHTML(post.caption)}</p>
+                <img src="${post.imageUrl}" style="width:100%; max-height:500px; object-fit:contain; border-radius:6px; background:#fafafa; border: 1px solid #eaeaea;">
             `;
 
             if (isMyPost || isLoggedAsAdmin) {
                 postCard.querySelector('.delete-post-btn').addEventListener('click', async (e) => {
                     if (confirm("Delete this meme from public feed?")) {
-                        await deleteDoc(doc(db, "posts", e.target.dataset.id));
+                        await deleteDoc(doc(db, "posts", e.target.closest('.delete-post-btn').dataset.id));
                     }
                 });
             }
