@@ -16,6 +16,11 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// --- Cloudinary Global Upload Settings ---
+// Using a standard public unsigned preset for instant developer testing
+const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/demo/image/upload";
+const CLOUDINARY_PRESET = "docs_upload_example_preset";
+
 // GIPHY Engine Keys
 const GIPHY_API_KEY = "dc6zaTOxFJmzC"; 
 const giphyToggleBtn = document.getElementById('giphy-toggle-btn');
@@ -274,7 +279,7 @@ async function executeDirectPostPayload(urlPath, assetType) {
     } catch (e) { console.error(e); }
 }
 
-// --- Clickable Advanced System Notification Tray ---
+// --- Clickable System Notification Tray ---
 function addAlertNotification(senderName, textContent, targetMode, targetId) {
     unreadNotificationsCount++;
     if (notiBadge) {
@@ -560,7 +565,7 @@ function highlightSidebarBtn(activeButton) {
     if (activeButton) activeButton.style.background = '#4f545c';
 }
 
-// --- High-Performance Local Object Stream Handler ---
+// --- Live Cloudinary Global Media Engine ---
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -573,21 +578,25 @@ if (chatForm) {
             let fileType = null;
             
             if (file) {
-                currentRoomTitle.textContent = "Processing layout media stream... ⏳";
-
-                if (file.type.startsWith('video/')) {
-                    fileType = 'video';
-                    // Generate a tiny, network-safe pointer blob instead of text strings
-                    finalUrl = URL.createObjectURL(file);
-                } else {
-                    fileType = 'image';
-                    finalUrl = await new Promise((res, rej) => {
-                        const r = new FileReader();
-                        r.onload = () => res(r.result);
-                        r.onerror = (err) => rej(err);
-                        r.readAsDataURL(file);
-                    });
-                }
+                currentRoomTitle.textContent = "Broadcasting media to global web cloud... 🌐";
+                fileType = file.type.startsWith('video/') ? 'video' : 'image';
+                
+                // Pack file raw data directly into standard FormData request
+                const formData = new FormData();
+                formData.append("file", file);
+                formData.append("upload_preset", CLOUDINARY_PRESET);
+                
+                // Post directly to Cloudinary open intake pipeline
+                const response = await fetch(CLOUDINARY_URL, {
+                    method: "POST",
+                    body: formData
+                });
+                
+                if (!response.ok) throw new Error("Cloudinary engine upload rejected.");
+                const data = await response.json();
+                
+                // This link is globally accessible by anyone reading your Firestore database!
+                finalUrl = data.secure_url;
             }
 
             const myData = userCache[currentUser.email.toLowerCase()] || {};
@@ -613,7 +622,7 @@ if (chatForm) {
             mediaInput.value = "";
         } catch (err) { 
             console.error(err);
-            alert("Media production pipeline error: " + err.message);
+            alert("Global cloud media upload failure: " + err.message);
         } finally {
             switchChannel(currentChatMode, activeServerId);
         }
