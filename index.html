@@ -39,6 +39,9 @@
                 <button id="search-user-btn" style="padding: 6px 10px; background: #5865f2; border: none; border-radius: 4px; color: #fff; cursor: pointer;">🔍</button>
             </div>
 
+            <h4 style="margin: 10px 0 5px 0; font-size: 12px; text-transform: uppercase; color: #b9bbbe; letter-spacing: 0.5px;">⭐ My Friends List</h4>
+            <div id="friends-list" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 15px;"></div>
+
             <div class="server-creation-box" style="margin-bottom: 15px; padding: 10px; background: #202225; border-radius: 6px;">
                 <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #b9bbbe;">Create a Server</h4>
                 <div style="display: flex; gap: 5px;">
@@ -99,6 +102,22 @@
                 </div>
                 <button type="submit" style="padding: 10px 20px; background: #5865f2; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Send</button>
             </form>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10001;">
+        <div class="modal-content" style="background: #2f3136; padding: 25px; border-radius: 8px; color: #fff; width: 90%; max-width: 350px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: flex-end;">
+                <span id="close-profile-modal" style="cursor: pointer; font-size: 20px; font-weight: bold; line-height: 1;">&times;</span>
+            </div>
+            <img id="view-profile-avatar" src="" alt="User Avatar" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; margin: 10px auto; border: 3px solid #5865f2; display: block;">
+            <h3 id="view-profile-name" style="margin: 10px 0 5px 0;">Username</h3>
+            <p id="view-profile-email" style="font-size: 13px; color: #b9bbbe; margin: 0 0 20px 0;">user@email.com</p>
+            
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="dm-start-btn" style="background: #5865f2; color: #fff; border: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">Chat DM</button>
+                <button id="add-friend-btn" style="background: #3ba55d; color: #fff; border: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">Add Friend ⭐</button>
+            </div>
         </div>
     </div>
 
