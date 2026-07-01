@@ -19,60 +19,83 @@
         <p id="toggle-auth">Don't have an account? <span id="toggle-link">Sign Up</span></p>
     </div>
 
-    <div id="app-container" class="hidden">
-        <div class="sidebar">
-            <div id="my-profile-display" class="profile-header">
-                <img id="my-avatar" src="" alt="Avatar">
-                <span id="my-displayName">Loading...</span>
+    <div id="app-container" class="hidden" style="display: flex; height: 100vh; width: 100vw; overflow: hidden; background: #36393f;">
+        
+        <div class="sidebar" style="width: 260px; background: #2f3136; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; border-right: 1px solid #202225; color: #fff;">
+            <div id="my-profile-display" class="profile-header" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 15px;">
+                <img id="my-avatar" src="" alt="Avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                <span id="my-displayName" style="font-weight: bold; font-size: 15px;">Loading...</span>
             </div>
-            <hr>
-            <button id="target-public" class="target-btn active">🌐 Global Chat</button>
             
-            <div class="search-box-container" style="padding: 5px 10px; display: flex; gap: 5px;">
-                <input type="text" id="search-user-input" placeholder="Search user email..." style="flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #444; background: #202225; color: #fff;">
+            <hr style="border: 0; border-top: 1px solid #444; margin-bottom: 15px;">
+            
+            <button id="target-public" class="target-btn active" style="width: 100%; padding: 10px; background: #4f545c; border: none; border-radius: 4px; color: #fff; text-align: left; cursor: pointer; margin-bottom: 15px;">🌐 Global Chat</button>
+            
+            <div class="search-box-container" style="display: flex; gap: 5px; margin-bottom: 15px;">
+                <input type="text" id="search-user-input" placeholder="Search user email..." style="flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #202225; background: #202225; color: #fff; font-size: 13px;">
                 <button id="search-user-btn" style="padding: 6px 10px; background: #5865f2; border: none; border-radius: 4px; color: #fff; cursor: pointer;">🔍</button>
             </div>
 
-            <div class="notification-center" style="padding: 5px 10px; position: relative;">
-                <button id="noti-toggle-btn" style="width: 100%; padding: 8px; background: #2f3136; border: 1px solid #444; color: #fff; border-radius: 4px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center;">
-                    <span>🔔 Alerts</span>
-                    <span id="noti-badge" style="background: #ed4245; color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 11px; display: none;">0</span>
-                </button>
-                <div id="noti-dropdown" class="hidden" style="position: absolute; top: 100%; left: 10px; right: 10px; background: #2f3136; border: 1px solid #444; border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 5px;">
-                    <div id="noti-list" style="font-size: 13px; color: #dcddde; padding: 5px; text-align: center;">No new notifications</div>
+            <div class="server-creation-box" style="margin-bottom: 15px; padding: 10px; background: #202225; border-radius: 6px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #b9bbbe;">Create a Server</h4>
+                <div style="display: flex; gap: 5px;">
+                    <input type="text" id="new-server-input" placeholder="Server Name..." style="flex: 1; padding: 5px; border-radius: 4px; border: none; background: #36393f; color: #fff; font-size: 12px;">
+                    <button id="create-server-btn" style="padding: 5px 10px; background: #3ba55d; border: none; border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer; font-weight: bold;">+</button>
                 </div>
             </div>
 
-            <h3>Direct Messages</h3>
-            <div id="users-list"></div>
+            <div class="notification-center" style="margin-bottom: 15px; position: relative;">
+                <button id="noti-toggle-btn" style="width: 100%; padding: 8px; background: #202225; border: none; color: #fff; border-radius: 4px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                    <span>🔔 System Alerts</span>
+                    <span id="noti-badge" style="background: #ed4245; color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 11px; display: none;">0</span>
+                </button>
+                <div id="noti-dropdown" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; background: #202225; border: 1px solid #444; border-radius: 4px; max-height: 150px; overflow-y: auto; z-index: 100; padding: 5px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+                    <div id="noti-list" style="font-size: 12px; color: #dcddde; padding: 5px; text-align: center;">No new notifications</div>
+                </div>
+            </div>
+
+            <h4 style="margin: 10px 0 5px 0; font-size: 12px; text-transform: uppercase; color: #b9bbbe; letter-spacing: 0.5px;">Servers</h4>
+            <div id="servers-list" style="flex: 1; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px;"></div>
+
+            <h4 style="margin: 10px 0 5px 0; font-size: 12px; text-transform: uppercase; color: #b9bbbe; letter-spacing: 0.5px;">Direct Messages</h4>
+            <div id="users-list" style="overflow-y: auto; max-height: 150px; display: flex; flex-direction: column; gap: 4px;"></div>
             
             <div id="admin-monitor-panel" class="hidden">
-                <hr>
-                <h4>Admin Intercept</h4>
-                <input type="text" id="admin-room-input" placeholder="Room ID">
-                <button id="admin-spy-btn">Spy Room</button>
+                <hr style="border: 0; border-top: 1px solid #444; margin: 10px 0;">
+                <h4 style="margin: 0 0 5px 0; font-size: 12px; color: #ed4245;">Admin Intercept</h4>
+                <div style="display: flex; gap: 5px;">
+                    <input type="text" id="admin-room-input" placeholder="Room ID" style="flex: 1; padding: 5px; background: #202225; border: none; color: #fff; font-size: 11px; border-radius: 4px;">
+                    <button id="admin-spy-btn" style="padding: 5px; background: #ed4245; color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;">Spy</button>
+                </div>
             </div>
-            <button id="logout-btn">Log Out</button>
-            <button id="theme-toggle-btn">Toggle Theme</button>
+            
+            <button id="logout-btn" style="width: 100%; padding: 8px; background: #ed4245; border: none; border-radius: 4px; color: #fff; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 13px;">Log Out</button>
+            <button id="theme-toggle-btn" style="width: 100%; padding: 6px; background: #4f545c; border: none; border-radius: 4px; color: #fff; cursor: pointer; margin-top: 5px; font-size: 11px;">Toggle Theme</button>
         </div>
 
-        <div id="messaging-container" class="chat-area">
-            <div class="chat-header" style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: #36393f; border-bottom: 1px solid #202225;">
-                <h2 id="current-room-title" style="margin: 0; font-size: 18px;">Global Chat</h2>
+        <div id="messaging-container" class="chat-area" style="flex: 1; display: flex; flex-direction: column; background: #36393f; color: #fff;">
+            <div class="chat-header" style="display: flex; align-items: center; justify-content: space-between; padding: 15px; background: #2f3136; border-bottom: 1px solid #202225;">
+                <div>
+                    <h2 id="current-room-title" style="margin: 0; font-size: 18px; display: inline-block;">Global Chat</h2>
+                    <span id="server-admin-indicator" style="margin-left: 10px; font-size: 12px; color: #faa61a; font-weight: bold;"></span>
+                </div>
                 
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <button id="disappear-toggle-btn" style="padding: 6px 12px; background: #4f545c; border: none; border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer;">⏱️ Poof: OFF</button>
                     <button id="call-btn" class="hidden" style="padding: 6px 12px; background: #3ba55d; border: none; border-radius: 4px; color: #fff; cursor: pointer; font-weight: bold;">📞 Call User</button>
                 </div>
             </div>
-            <div id="chat-messages" class="messages-log"></div>
-            <div id="typing-indicator-box" class="typing-status"></div>
+            
+            <div id="chat-messages" class="messages-log" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column;"></div>
+            <div id="typing-indicator-box" class="typing-status" style="padding: 0 20px 5px 20px; font-size: 12px; color: #b9bbbe; height: 15px;"></div>
 
-            <form id="chat-form" class="input-row" onsubmit="event.preventDefault();">
-                <label for="media-input" class="attach-label">📎</label>
-                <input type="file" id="media-input" accept="image/*,video/*" style="display:none;">
-                <input type="text" id="message-input" placeholder="Type a message or drop a file..." autocomplete="off">
-                <button type="submit">Send</button>
+            <form id="chat-form" class="input-row" style="padding: 0 20px 20px 20px; display: flex; gap: 10px;" onsubmit="event.preventDefault();">
+                <div style="display: flex; flex: 1; background: #40444b; border-radius: 8px; padding: 10px; align-items: center;">
+                    <label for="media-input" class="attach-label" style="cursor: pointer; font-size: 18px; margin-right: 10px; color: #b9bbbe;">📎</label>
+                    <input type="file" id="media-input" accept="image/*,video/*" style="display:none;">
+                    <input type="text" id="message-input" placeholder="Type a message or drop a file..." autocomplete="off" style="flex: 1; background: none; border: none; color: #fff; outline: none; font-size: 14px;">
+                </div>
+                <button type="submit" style="padding: 10px 20px; background: #5865f2; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Send</button>
             </form>
         </div>
     </div>
@@ -104,22 +127,22 @@
         </div>
     </div>
 
-    <div id="video-call-modal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 9999;">
-        <div style="background: #2f3136; padding: 25px; border-radius: 12px; text-align: center; max-width: 700px; width: 90%;">
-            <h3 style="color: #fff; margin-top: 0; margin-bottom: 15px; font-size: 20px;">Live FaceTime Call</h3>
+    <div id="video-call-modal" class="modal hidden" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 9999;">
+        <div style="background: #2f3136; padding: 25px; border-radius: 12px; text-align: center; max-width: 700px; width: 90%; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
+            <h3 style="color: #fff; margin-top: 0; margin-bottom: 20px; font-size: 20px; font-family: sans-serif;">Live FaceTime Call</h3>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
-                <div style="background: #000; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 4/3;">
-                    <video id="remote-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
-                    <div style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; font-size: 12px; border-radius: 4px;">Friend</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+                <div style="background: #111; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 4/3; border: 1px solid #444;">
+                    <video id="remote-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; background: #000;"></video>
+                    <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: #fff; padding: 4px 10px; font-size: 11px; border-radius: 4px; font-family: sans-serif; font-weight: bold;">Friend Stream</div>
                 </div>
-                <div style="background: #000; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 4/3;">
-                    <video id="local-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
-                    <div style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; font-size: 12px; border-radius: 4px;">You (Your Camera)</div>
+                <div style="background: #111; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 4/3; border: 1px solid #444;">
+                    <video id="local-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; background: #000;"></video>
+                    <div style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: #fff; padding: 4px 10px; font-size: 11px; border-radius: 4px; font-family: sans-serif; font-weight: bold;">Your Feed</div>
                 </div>
             </div>
             
-            <button id="end-call-btn" style="background: #ed4245; color: #fff; border: none; padding: 12px 30px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; transition: background 0.2s;">Hang Up ❌</button>
+            <button id="end-call-btn" style="background: #ed4245; color: #fff; border: none; padding: 12px 35px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; box-shadow: 0 4px 10px rgba(237,66,69,0.3);">End Call ❌</button>
         </div>
     </div>
 
