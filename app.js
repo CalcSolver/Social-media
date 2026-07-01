@@ -113,10 +113,8 @@ async function uploadToCloudinary(fileObj) {
 function buildRealTimePeerConnection(userEmailCleaned) {
     if (myPeerInstance) return;
 
-    // We instantiate Peer connection named uniquely by the user's logged email
     myPeerInstance = new Peer(userEmailCleaned);
 
-    // Listen for incoming calls from other users
     myPeerInstance.on('call', async (incomingCall) => {
         if (confirm(`Incoming video call from another participant. Answer?`)) {
             try {
@@ -139,10 +137,8 @@ function buildRealTimePeerConnection(userEmailCleaned) {
     });
 }
 
-// Event Bindings for Audio/Video Pipeline
 callBtn.addEventListener('click', async () => {
     if (currentChatMode === "public" || currentChatMode.startsWith("spy_")) return;
-    
     const cleaningTarget = currentChatMode.replace(/[@.]/g, '_');
     
     try {
@@ -150,7 +146,6 @@ callBtn.addEventListener('click', async () => {
         localVideo.srcObject = localMediaStream;
         videoCallModal.classList.remove('hidden');
 
-        // Fire call targeting the peer node of your chat partner
         const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
         currentMediaConnection = outboundCall;
 
@@ -178,7 +173,7 @@ themeToggleBtn.addEventListener('click', () => {
 
 targetPublicBtn.addEventListener('click', () => {
     highlightSidebarBtn(targetPublicBtn);
-    callBtn.classList.add('hidden'); // No calls in public channels
+    callBtn.classList.add('hidden'); 
     switchChannel("public");
 });
 
@@ -191,6 +186,7 @@ toggleLink.addEventListener('click', () => {
     document.getElementById('toggle-link').addEventListener('click', () => toggleLink.click());
 });
 
+// FIXED: Added absolute preventDefault structure to stop routing refresh loops
 authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = emailInput.value.trim().toLowerCase();
@@ -213,22 +209,26 @@ authForm.addEventListener('submit', async (e) => {
             await signInWithEmailAndPassword(auth, email, password);
             await updateDoc(doc(db, "users", email), { online: true });
         }
-    } catch (err) { alert(err.message); }
+    } catch (err) { 
+        alert(err.message); 
+    }
 });
 
 logoutBtn.addEventListener('click', async () => {
     if (currentUser) {
         await updateDoc(doc(db, "users", currentUser.email.toLowerCase()), { online: false });
     }
-    if (myPeerInstance) myPeerInstance.destroy();
+    if (myPeerInstance) {
+        myPeerInstance.destroy();
+        myPeerInstance = null;
+    }
     signOut(auth);
 });
 
+// FIXED: Corrected layout visibility sequence to prevent jumpy auth refreshing
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
-        authContainer.classList.add('hidden');
-        appContainer.classList.remove('hidden');
         
         if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
             adminMonitorPanel.classList.remove('hidden');
@@ -244,15 +244,18 @@ onAuthStateChanged(auth, async (user) => {
             userCache[user.email.toLowerCase()] = data;
         }
 
-        // Connect the client to Peer infrastructure instantly
         buildRealTimePeerConnection(user.email.toLowerCase().replace(/[@.]/g, '_'));
+
+        // Swap visual boxes safely after metadata mounts
+        authContainer.classList.add('hidden');
+        appContainer.classList.remove('hidden');
 
         targetPublicBtn.click(); 
         listenForUserPresence();
     } else {
         currentUser = null;
-        authContainer.classList.remove('hidden');
         appContainer.classList.add('hidden');
+        authContainer.classList.remove('hidden');
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
     }
@@ -331,7 +334,7 @@ function listenForUserPresence() {
                 `;
                 btn.addEventListener('click', () => {
                     highlightSidebarBtn(btn);
-                    callBtn.classList.remove('hidden'); // Expose Calling on Direct Chats
+                    callBtn.classList.remove('hidden'); 
                     switchChannel(userData.email.toLowerCase());
                 });
                 usersList.appendChild(btn);
@@ -416,7 +419,6 @@ mediaInput.addEventListener('change', () => {
     if(mediaInput.files[0]) messageInput.placeholder = `📎 Ready: ${mediaInput.files[0].name}`;
 });
 
-// HYBRID PROCESSING HANDLER: Base64 for Images, Cloudinary for Videos
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
