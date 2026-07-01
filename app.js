@@ -33,13 +33,20 @@ const mediaInput = document.getElementById('media-input');
 const chatMessages = document.getElementById('chat-messages');
 const myProfileDisplay = document.getElementById('my-profile-display');
 const myAvatar = document.getElementById('my-avatar');
-const myDisplayName = document.getElementById('my-display-name');
+const myDisplayName = document.getElementById('my-displayName');
 const currentRoomTitle = document.getElementById('current-room-title');
 const usersList = document.getElementById('users-list');
 const searchUserInput = document.getElementById('search-user-input');
 const searchUserBtn = document.getElementById('search-user-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const typingIndicatorBox = document.getElementById('typing-indicator-box');
+
+// Call / FaceTime UI Nodes
+const callBtn = document.getElementById('call-btn');
+const videoCallModal = document.getElementById('video-call-modal');
+const endCallBtn = document.getElementById('end-call-btn');
+const localVideo = document.getElementById('local-video');
+const remoteVideo = document.getElementById('remote-video');
 
 // Admin Elements
 const adminMonitorPanel = document.getElementById('admin-monitor-panel');
@@ -69,14 +76,18 @@ let unsubscribeChat = null;
 let unsubscribePresence = null;
 let typingTimeout = null;
 
+// Video Calling Global Tracking States
+let myPeerInstance = null;
+let currentMediaConnection = null;
+let localMediaStream = null;
+
 const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Streamlined Cloudinary Cloud Storage Uploader using /auto/ endpoint
+// Streamlined Cloudinary Engine for heavy files (Videos)
 async function uploadToCloudinary(fileObj) {
     if (!fileObj) return null;
-
     const cloudName = "ddvsercvm"; 
     const uploadPreset = "my_preset"; 
 
@@ -89,9 +100,7 @@ async function uploadToCloudinary(fileObj) {
             method: "POST",
             body: formData
         });
-
         if (!response.ok) throw new Error("Cloudinary upload failed");
-
         const data = await response.json();
         return data.secure_url; 
     } catch (err) {
@@ -100,12 +109,76 @@ async function uploadToCloudinary(fileObj) {
     }
 }
 
+// PeerJS Initialization Function
+function buildRealTimePeerConnection(userEmailCleaned) {
+    if (myPeerInstance) return;
+
+    // We instantiate Peer connection named uniquely by the user's logged email
+    myPeerInstance = new Peer(userEmailCleaned);
+
+    // Listen for incoming calls from other users
+    myPeerInstance.on('call', async (incomingCall) => {
+        if (confirm(`Incoming video call from another participant. Answer?`)) {
+            try {
+                localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localMediaStream;
+                videoCallModal.classList.remove('hidden');
+
+                incomingCall.answer(localMediaStream);
+                currentMediaConnection = incomingCall;
+
+                incomingCall.on('stream', (incomingStream) => {
+                    remoteVideo.srcObject = incomingStream;
+                });
+            } catch (err) {
+                alert("Could not access camera/microphone metadata setup.");
+            }
+        } else {
+            incomingCall.close();
+        }
+    });
+}
+
+// Event Bindings for Audio/Video Pipeline
+callBtn.addEventListener('click', async () => {
+    if (currentChatMode === "public" || currentChatMode.startsWith("spy_")) return;
+    
+    const cleaningTarget = currentChatMode.replace(/[@.]/g, '_');
+    
+    try {
+        localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localMediaStream;
+        videoCallModal.classList.remove('hidden');
+
+        // Fire call targeting the peer node of your chat partner
+        const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
+        currentMediaConnection = outboundCall;
+
+        outboundCall.on('stream', (incomingStream) => {
+            remoteVideo.srcObject = incomingStream;
+        });
+    } catch (err) {
+        alert("Camera initialization blocked. Check user preferences/permissions.");
+    }
+});
+
+endCallBtn.addEventListener('click', () => {
+    if (currentMediaConnection) currentMediaConnection.close();
+    if (localMediaStream) {
+        localMediaStream.getTracks().forEach(track => track.stop());
+    }
+    videoCallModal.classList.add('hidden');
+    localVideo.srcObject = null;
+    remoteVideo.srcObject = null;
+});
+
 themeToggleBtn.addEventListener('click', () => {
     document.body.classList.toggle('dark-theme');
 });
 
 targetPublicBtn.addEventListener('click', () => {
     highlightSidebarBtn(targetPublicBtn);
+    callBtn.classList.add('hidden'); // No calls in public channels
     switchChannel("public");
 });
 
@@ -147,6 +220,7 @@ logoutBtn.addEventListener('click', async () => {
     if (currentUser) {
         await updateDoc(doc(db, "users", currentUser.email.toLowerCase()), { online: false });
     }
+    if (myPeerInstance) myPeerInstance.destroy();
     signOut(auth);
 });
 
@@ -169,6 +243,9 @@ onAuthStateChanged(auth, async (user) => {
             myAvatar.src = data.photoURL || defaultAvatar;
             userCache[user.email.toLowerCase()] = data;
         }
+
+        // Connect the client to Peer infrastructure instantly
+        buildRealTimePeerConnection(user.email.toLowerCase().replace(/[@.]/g, '_'));
 
         targetPublicBtn.click(); 
         listenForUserPresence();
@@ -218,6 +295,7 @@ adminSpyBtn.addEventListener('click', () => {
     adminSpyRoomId = targetRoomInput.toLowerCase();
     currentChatMode = "spy_" + adminSpyRoomId;
     highlightSidebarBtn(null);
+    callBtn.classList.add('hidden');
     currentRoomTitle.textContent = `Intercept: ${adminSpyRoomId}`;
     loadMessages();
 });
@@ -253,6 +331,7 @@ function listenForUserPresence() {
                 `;
                 btn.addEventListener('click', () => {
                     highlightSidebarBtn(btn);
+                    callBtn.classList.remove('hidden'); // Expose Calling on Direct Chats
                     switchChannel(userData.email.toLowerCase());
                 });
                 usersList.appendChild(btn);
@@ -323,6 +402,7 @@ async function showUserProfile(email) {
             searchUserInput.value = '';
             const targetSidebarButton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
             highlightSidebarBtn(targetSidebarButton);
+            callBtn.classList.remove('hidden');
             switchChannel(email);
         });
         profileModal.classList.remove('hidden');
@@ -336,17 +416,35 @@ mediaInput.addEventListener('change', () => {
     if(mediaInput.files[0]) messageInput.placeholder = `📎 Ready: ${mediaInput.files[0].name}`;
 });
 
+// HYBRID PROCESSING HANDLER: Base64 for Images, Cloudinary for Videos
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
     const file = mediaInput.files[0];
     if (!text && !file) return;
 
-    messageInput.placeholder = "Uploading file asset to cloud service...";
+    messageInput.placeholder = "Processing asset payload...";
 
     try {
-        const cloudUrl = await uploadToCloudinary(file);
-        const fileType = file ? (file.type.startsWith('image/') ? 'image' : 'video') : null;
+        let finalUrl = null;
+        let fileType = null;
+
+        if (file) {
+            if (file.type.startsWith('image/')) {
+                messageInput.placeholder = "Encoding image to text string...";
+                finalUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = (err) => reject(err);
+                    reader.readAsDataURL(file);
+                });
+                fileType = 'image';
+            } else if (file.type.startsWith('video/')) {
+                messageInput.placeholder = "Streaming video file asset to Cloudinary...";
+                finalUrl = await uploadToCloudinary(file);
+                fileType = 'video';
+            }
+        }
 
         const myData = userCache[currentUser.email.toLowerCase()] || {};
         const payload = {
@@ -356,7 +454,7 @@ chatForm.addEventListener('submit', async (e) => {
             userAvatar: myData.photoURL || defaultAvatar,
             timestamp: serverTimestamp(),
             reactions: { "🔥": 0, "💀": 0, "👍": 0 },
-            ...(cloudUrl && { fileUrl: cloudUrl, fileType: fileType })
+            ...(finalUrl && { fileUrl: finalUrl, fileType: fileType })
         };
 
         if (currentChatMode === "public") {
@@ -372,7 +470,7 @@ chatForm.addEventListener('submit', async (e) => {
         messageInput.placeholder = "Type a message or drop a file...";
     } catch (err) { 
         console.error(err); 
-        messageInput.placeholder = "Error processing data asset...";
+        messageInput.placeholder = "Error parsing attached file asset...";
     }
 });
 
@@ -415,8 +513,7 @@ function loadMessages() {
             
             let mediaMarkup = '';
             if (data.fileUrl) {
-                // If it ends with .mp4 or has a video stream pattern, render a video tag seamlessly
-                const isVideo = data.fileType === 'video' || data.fileUrl.match(/\.(mp4|webm|ogg|mov|mov)$/i);
+                const isVideo = data.fileType === 'video' || data.fileUrl.match(/\.(mp4|webm|ogg|mov)$/i);
                 mediaMarkup = isVideo 
                     ? `<video src="${data.fileUrl}" class="media-attachment" controls></video>`
                     : `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Asset Link">`;
