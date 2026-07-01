@@ -16,10 +16,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- JSON2Video API Integration Setup ---
-const JSON2VIDEO_KEY = "HMvk355mgCAQZ0SYAxuoNCCK8deanBrY1EDB3TZN"; 
-const JSON2VIDEO_API = "https://api.json2video.com/v2/movies";
-
 // GIPHY Engine Keys
 const GIPHY_API_KEY = "dc6zaTOxFJmzC"; 
 const giphyToggleBtn = document.getElementById('giphy-toggle-btn');
@@ -110,7 +106,6 @@ function launchUserProfileInspector(targetEmail) {
     if (viewProfileAvatar) viewProfileAvatar.src = data.photoURL || defaultAvatar;
     if (viewProfileEmail) viewProfileEmail.textContent = data.email || targetEmail;
     
-    // Check if user is the server owner to show invite controls
     if (currentChatMode === "server" && currentUser) {
         const sData = serverCache[activeServerId] || {};
         if (sData.owner === currentUser.email.toLowerCase()) {
@@ -326,7 +321,7 @@ if (disappearToggleBtn) {
     });
 }
 
-// --- Create Server with Discord-Style Whitelist Setup ---
+// --- Create Server Setup ---
 if (createServerBtn) {
     createServerBtn.addEventListener('click', async () => {
         const name = newServerInput.value.trim();
@@ -340,7 +335,7 @@ if (createServerBtn) {
             owner: currentUser.email.toLowerCase(), 
             created: serverTimestamp(),
             allowedMembers: {
-                [myCleanEmail]: true // Whitelist the creator automatically
+                [myCleanEmail]: true
             }
         });
         newServerInput.value = '';
@@ -469,18 +464,12 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// --- Discord Style Invitation Filter Query ---
 function listenForServersList() {
     if (unsubscribeServers) unsubscribeServers();
     if (!currentUser) return;
     
     const mySanitizedFilter = currentUser.email.toLowerCase().replace(/[@.]/g, '_');
-    
-    // Only fetch servers where the user's email exists inside the allowedMembers map
-    const serverQuery = query(
-        collection(db, "servers"), 
-        where(`allowedMembers.${mySanitizedFilter}`, "==", true)
-    );
+    const serverQuery = query(collection(db, "servers"), where(`allowedMembers.${mySanitizedFilter}`, "==", true));
     
     unsubscribeServers = onSnapshot(serverQuery, (snap) => {
         if (!serversList) return;
@@ -571,7 +560,7 @@ function highlightSidebarBtn(activeButton) {
     if (activeButton) activeButton.style.background = '#4f545c';
 }
 
-// --- JSON2Video Cloud Upload Submission Pipeline ---
+// --- High-Performance Local Object Stream Handler ---
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -585,48 +574,19 @@ if (chatForm) {
             
             if (file) {
                 currentRoomTitle.textContent = "Processing layout media stream... ⏳";
-                
-                // Convert file locally to base64 formatting
-                finalUrl = await new Promise((res, rej) => {
-                    const r = new FileReader();
-                    r.onload = () => res(r.result);
-                    r.onerror = (err) => rej(err);
-                    r.readAsDataURL(file);
-                });
 
                 if (file.type.startsWith('video/')) {
                     fileType = 'video';
-                    currentRoomTitle.textContent = "Rendering video via JSON2Video... 🎬";
-
-                    // Construct project composition layout for rendering
-                    const videoPayload = {
-                        "resolution": "hd",
-                        "quality": "high",
-                        "scenes": [{
-                            "elements": [{
-                                "type": "video",
-                                "src": finalUrl
-                            }]
-                        }]
-                    };
-                    
-                    const response = await fetch(JSON2VIDEO_API, {
-                        method: "POST",
-                        headers: {
-                            "x-api-key": JSON2VIDEO_KEY,
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify(videoPayload)
-                    });
-                    
-                    if (!response.ok) throw new Error("JSON2Video failed to process render project.");
-                    const renderResult = await response.json();
-                    
-                    if (renderResult.movie && renderResult.movie.url) {
-                        finalUrl = renderResult.movie.url;
-                    }
+                    // Generate a tiny, network-safe pointer blob instead of text strings
+                    finalUrl = URL.createObjectURL(file);
                 } else {
                     fileType = 'image';
+                    finalUrl = await new Promise((res, rej) => {
+                        const r = new FileReader();
+                        r.onload = () => res(r.result);
+                        r.onerror = (err) => rej(err);
+                        r.readAsDataURL(file);
+                    });
                 }
             }
 
