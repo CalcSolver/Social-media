@@ -33,7 +33,7 @@ const mediaInput = document.getElementById('media-input');
 const chatMessages = document.getElementById('chat-messages');
 const myProfileDisplay = document.getElementById('my-profile-display');
 const myAvatar = document.getElementById('my-avatar');
-const myDisplayName = document.getElementById('my-displayName');
+const myDisplayName = document.getElementById('my-displayName') || document.getElementById('my-display-name');
 const currentRoomTitle = document.getElementById('current-room-title');
 const usersList = document.getElementById('users-list');
 const searchUserInput = document.getElementById('search-user-input');
@@ -76,7 +76,6 @@ let unsubscribeChat = null;
 let unsubscribePresence = null;
 let typingTimeout = null;
 
-// Video Calling Global Tracking States
 let myPeerInstance = null;
 let currentMediaConnection = null;
 let localMediaStream = null;
@@ -85,7 +84,6 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Streamlined Cloudinary Engine for heavy files (Videos)
 async function uploadToCloudinary(fileObj) {
     if (!fileObj) return null;
     const cloudName = "ddvsercvm"; 
@@ -109,24 +107,22 @@ async function uploadToCloudinary(fileObj) {
     }
 }
 
-// PeerJS Initialization Function
 function buildRealTimePeerConnection(userEmailCleaned) {
     if (myPeerInstance) return;
-
     myPeerInstance = new Peer(userEmailCleaned);
 
     myPeerInstance.on('call', async (incomingCall) => {
         if (confirm(`Incoming video call from another participant. Answer?`)) {
             try {
                 localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                localVideo.srcObject = localMediaStream;
-                videoCallModal.classList.remove('hidden');
+                if (localVideo) localVideo.srcObject = localMediaStream;
+                if (videoCallModal) videoCallModal.classList.remove('hidden');
 
                 incomingCall.answer(localMediaStream);
                 currentMediaConnection = incomingCall;
 
                 incomingCall.on('stream', (incomingStream) => {
-                    remoteVideo.srcObject = incomingStream;
+                    if (remoteVideo) remoteVideo.srcObject = incomingStream;
                 });
             } catch (err) {
                 alert("Could not access camera/microphone metadata setup.");
@@ -137,107 +133,126 @@ function buildRealTimePeerConnection(userEmailCleaned) {
     });
 }
 
-callBtn.addEventListener('click', async () => {
-    if (currentChatMode === "public" || currentChatMode.startsWith("spy_")) return;
-    const cleaningTarget = currentChatMode.replace(/[@.]/g, '_');
-    
-    try {
-        localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localMediaStream;
-        videoCallModal.classList.remove('hidden');
+if (callBtn) {
+    callBtn.addEventListener('click', async () => {
+        if (currentChatMode === "public" || currentChatMode.startsWith("spy_")) return;
+        const cleaningTarget = currentChatMode.replace(/[@.]/g, '_');
+        
+        try {
+            localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            if (localVideo) localVideo.srcObject = localMediaStream;
+            if (videoCallModal) videoCallModal.classList.remove('hidden');
 
-        const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
-        currentMediaConnection = outboundCall;
+            const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
+            currentMediaConnection = outboundCall;
 
-        outboundCall.on('stream', (incomingStream) => {
-            remoteVideo.srcObject = incomingStream;
-        });
-    } catch (err) {
-        alert("Camera initialization blocked. Check user preferences/permissions.");
-    }
-});
-
-endCallBtn.addEventListener('click', () => {
-    if (currentMediaConnection) currentMediaConnection.close();
-    if (localMediaStream) {
-        localMediaStream.getTracks().forEach(track => track.stop());
-    }
-    videoCallModal.classList.add('hidden');
-    localVideo.srcObject = null;
-    remoteVideo.srcObject = null;
-});
-
-themeToggleBtn.addEventListener('click', () => {
-    document.body.classList.toggle('dark-theme');
-});
-
-targetPublicBtn.addEventListener('click', () => {
-    highlightSidebarBtn(targetPublicBtn);
-    callBtn.classList.add('hidden'); 
-    switchChannel("public");
-});
-
-toggleLink.addEventListener('click', () => {
-    isSignUpMode = !isSignUpMode;
-    submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
-    document.getElementById('toggle-auth').innerHTML = isSignUpMode 
-        ? 'Already have an account? <span id="toggle-link">Login</span>'
-        : 'Don\'t have an account? <span id="toggle-link">Sign Up</span>';
-    document.getElementById('toggle-link').addEventListener('click', () => toggleLink.click());
-});
-
-// FIXED: Added absolute preventDefault structure to stop routing refresh loops
-authForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = emailInput.value.trim().toLowerCase();
-    const password = passwordInput.value;
-
-    try {
-        if (isSignUpMode) {
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            const fallbackName = email.split('@')[0];
-            await updateProfile(userCredential.user, { displayName: fallbackName, photoURL: defaultAvatar });
-            await setDoc(doc(db, "users", email), {
-                uid: userCredential.user.uid,
-                displayName: fallbackName,
-                email: email,
-                photoURL: defaultAvatar,
-                status: "Hey there! Let's chat.",
-                online: true
+            outboundCall.on('stream', (incomingStream) => {
+                if (remoteVideo) remoteVideo.srcObject = incomingStream;
             });
-        } else {
-            await signInWithEmailAndPassword(auth, email, password);
-            await updateDoc(doc(db, "users", email), { online: true });
+        } catch (err) {
+            alert("Camera initialization blocked.");
         }
-    } catch (err) { 
-        alert(err.message); 
-    }
-});
+    });
+}
 
-logoutBtn.addEventListener('click', async () => {
-    if (currentUser) {
-        await updateDoc(doc(db, "users", currentUser.email.toLowerCase()), { online: false });
-    }
-    if (myPeerInstance) {
-        myPeerInstance.destroy();
-        myPeerInstance = null;
-    }
-    signOut(auth);
-});
+if (endCallBtn) {
+    endCallBtn.addEventListener('click', () => {
+        if (currentMediaConnection) currentMediaConnection.close();
+        if (localMediaStream) {
+            localMediaStream.getTracks().forEach(track => track.stop());
+        }
+        if (videoCallModal) videoCallModal.classList.add('hidden');
+        if (localVideo) localVideo.srcObject = null;
+        if (remoteVideo) remoteVideo.srcObject = null;
+    });
+}
 
-// FIXED: Corrected layout visibility sequence to prevent jumpy auth refreshing
+if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', () => {
+        document.body.classList.toggle('dark-theme');
+    });
+}
+
+if (targetPublicBtn) {
+    targetPublicBtn.addEventListener('click', () => {
+        highlightSidebarBtn(targetPublicBtn);
+        if (callBtn) callBtn.classList.add('hidden'); 
+        switchChannel("public");
+    });
+}
+
+if (toggleLink) {
+    toggleLink.addEventListener('click', () => {
+        isSignUpMode = !isSignUpMode;
+        if (submitBtn) submitBtn.textContent = isSignUpMode ? "Sign Up" : "Login";
+        const toggleAuthContainer = document.getElementById('toggle-auth');
+        if (toggleAuthContainer) {
+            toggleAuthContainer.innerHTML = isSignUpMode 
+                ? 'Already have an account? <span id="toggle-link">Login</span>'
+                : 'Don\'t have an account? <span id="toggle-link">Sign Up</span>';
+            const newToggleLink = document.getElementById('toggle-link');
+            if (newToggleLink) newToggleLink.addEventListener('click', () => toggleLink.click());
+        }
+    });
+}
+
+// CRITICAL ATTACHMENT PROTECTION: Standardized auth handling
+if (authForm) {
+    authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = emailInput.value.trim().toLowerCase();
+        const password = passwordInput.value;
+
+        try {
+            if (isSignUpMode) {
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const fallbackName = email.split('@')[0];
+                await updateProfile(userCredential.user, { displayName: fallbackName, photoURL: defaultAvatar });
+                await setDoc(doc(db, "users", email), {
+                    uid: userCredential.user.uid,
+                    displayName: fallbackName,
+                    email: email,
+                    photoURL: defaultAvatar,
+                    status: "Hey there! Let's chat.",
+                    online: true
+                });
+            } else {
+                await signInWithEmailAndPassword(auth, email, password);
+                await updateDoc(doc(db, "users", email), { online: true });
+            }
+        } catch (err) { 
+            alert(err.message); 
+        }
+    });
+}
+
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+        if (currentUser) {
+            await updateDoc(doc(db, "users", currentUser.email.toLowerCase()), { online: false });
+        }
+        if (myPeerInstance) {
+            myPeerInstance.destroy();
+            myPeerInstance = null;
+        }
+        signOut(auth);
+    });
+}
+
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
         
-        if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-            adminMonitorPanel.classList.remove('hidden');
-        } else {
-            adminMonitorPanel.classList.add('hidden');
+        if (adminMonitorPanel) {
+            if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+                adminMonitorPanel.classList.remove('hidden');
+            } else {
+                adminMonitorPanel.classList.add('hidden');
+            }
         }
 
         const userDoc = await getDoc(doc(db, "users", user.email.toLowerCase()));
-        if (userDoc.exists()) {
+        if (userDoc.exists() && myDisplayName && myAvatar) {
             const data = userDoc.data();
             myDisplayName.textContent = data.displayName || user.email;
             myAvatar.src = data.photoURL || defaultAvatar;
@@ -246,41 +261,42 @@ onAuthStateChanged(auth, async (user) => {
 
         buildRealTimePeerConnection(user.email.toLowerCase().replace(/[@.]/g, '_'));
 
-        // Swap visual boxes safely after metadata mounts
-        authContainer.classList.add('hidden');
-        appContainer.classList.remove('hidden');
+        if (authContainer) authContainer.classList.add('hidden');
+        if (appContainer) appContainer.classList.remove('hidden');
 
-        targetPublicBtn.click(); 
+        if (targetPublicBtn) targetPublicBtn.click(); 
         listenForUserPresence();
     } else {
         currentUser = null;
-        appContainer.classList.add('hidden');
-        authContainer.classList.remove('hidden');
+        if (appContainer) appContainer.classList.add('hidden');
+        if (authContainer) authContainer.classList.remove('hidden');
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
     }
 });
 
-messageInput.addEventListener('input', () => {
-    if (!currentUser) return;
-    const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
-    
-    setDoc(doc(db, "typing", roomPath), {
-        [currentUser.email.replace(/[@.]/g, '_')]: true,
-        displayName: myDisplayName.textContent
-    }, { merge: true });
-
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => {
+if (messageInput) {
+    messageInput.addEventListener('input', () => {
+        if (!currentUser) return;
+        const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
+        
         setDoc(doc(db, "typing", roomPath), {
-            [currentUser.email.replace(/[@.]/g, '_')]: false
+            [currentUser.email.replace(/[@.]/g, '_')]: true,
+            displayName: myDisplayName ? myDisplayName.textContent : "Someone"
         }, { merge: true });
-    }, 2000);
-});
+
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            setDoc(doc(db, "typing", roomPath), {
+                [currentUser.email.replace(/[@.]/g, '_')]: false
+            }, { merge: true });
+        }, 2000);
+    });
+}
 
 function listenForTypingIndicators(roomPath) {
     onSnapshot(doc(db, "typing", roomPath), (snapshot) => {
-        if (!snapshot.exists()) { typingIndicatorBox.textContent = ""; return; }
+        if (!snapshot.exists()) { if (typingIndicatorBox) typingIndicatorBox.textContent = ""; return; }
         const data = snapshot.data();
         let typers = [];
         for (let key in data) {
@@ -288,26 +304,32 @@ function listenForTypingIndicators(roomPath) {
                 typers.push(data.displayName || "Someone");
             }
         }
-        typingIndicatorBox.textContent = typers.length > 0 ? `${typers.join(', ')} is typing...` : "";
+        if (typingIndicatorBox) {
+            typingIndicatorBox.textContent = typers.length > 0 ? `${typers.join(', ')} is typing...` : "";
+        }
     });
 }
 
-adminSpyBtn.addEventListener('click', () => {
-    const targetRoomInput = adminRoomInput.value.trim();
-    if (!targetRoomInput) return;
-    adminSpyRoomId = targetRoomInput.toLowerCase();
-    currentChatMode = "spy_" + adminSpyRoomId;
-    highlightSidebarBtn(null);
-    callBtn.classList.add('hidden');
-    currentRoomTitle.textContent = `Intercept: ${adminSpyRoomId}`;
-    loadMessages();
-});
+if (adminSpyBtn) {
+    adminSpyBtn.addEventListener('click', () => {
+        const targetRoomInput = adminRoomInput ? adminRoomInput.value.trim() : "";
+        if (!targetRoomInput) return;
+        adminSpyRoomId = targetRoomInput.toLowerCase();
+        currentChatMode = "spy_" + adminSpyRoomId;
+        highlightSidebarBtn(null);
+        if (callBtn) callBtn.classList.add('hidden');
+        if (currentRoomTitle) currentRoomTitle.textContent = `Intercept: ${adminSpyRoomId}`;
+        loadMessages();
+    });
+}
 
-searchUserBtn.addEventListener('click', async () => {
-    const searchEmail = searchUserInput.value.trim().toLowerCase();
-    if (!searchEmail || searchEmail === currentUser.email.toLowerCase()) return;
-    await showUserProfile(searchEmail);
-});
+if (searchUserBtn) {
+    searchUserBtn.addEventListener('click', async () => {
+        const searchEmail = searchUserInput ? searchUserInput.value.trim().toLowerCase() : "";
+        if (!searchEmail || searchEmail === currentUser.email.toLowerCase()) return;
+        await showUserProfile(searchEmail);
+    });
+}
 
 function getDMId(userA, userB) {
     return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
@@ -316,6 +338,7 @@ function getDMId(userA, userB) {
 function listenForUserPresence() {
     if (unsubscribePresence) unsubscribePresence();
     unsubscribePresence = onSnapshot(collection(db, "users"), (snapshot) => {
+        if (!usersList) return;
         usersList.innerHTML = '';
         snapshot.forEach((docSnap) => {
             const userData = docSnap.data();
@@ -334,7 +357,7 @@ function listenForUserPresence() {
                 `;
                 btn.addEventListener('click', () => {
                     highlightSidebarBtn(btn);
-                    callBtn.classList.remove('hidden'); 
+                    if (callBtn) callBtn.classList.remove('hidden'); 
                     switchChannel(userData.email.toLowerCase());
                 });
                 usersList.appendChild(btn);
@@ -350,131 +373,141 @@ function highlightSidebarBtn(activeButton) {
 
 function switchChannel(mode) {
     currentChatMode = mode.toLowerCase();
-    currentRoomTitle.textContent = mode === "public" ? "Global Chat" : `Direct Message: ${mode}`;
+    if (currentRoomTitle) currentRoomTitle.textContent = mode === "public" ? "Global Chat" : `Direct Message: ${mode}`;
     loadMessages();
     const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
     listenForTypingIndicators(roomPath);
 }
 
-myProfileDisplay.addEventListener('click', async () => {
-    const userDoc = await getDoc(doc(db, "users", currentUser.email.toLowerCase()));
-    if (userDoc.exists()) {
-        const data = userDoc.data();
-        settingsNameInput.value = data.displayName || '';
-        settingsStatusInput.value = data.status || '';
-    }
-    settingsModal.classList.remove('hidden');
-});
-
-settingsForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const newName = settingsNameInput.value.trim();
-    const newStatus = settingsStatusInput.value.trim();
-    const avatarFile = settingsAvatarInput.files[0];
-    
-    try {
-        let photoURL = myAvatar.src;
-        if (avatarFile) {
-            photoURL = await uploadToCloudinary(avatarFile) || myAvatar.src;
+if (myProfileDisplay) {
+    myProfileDisplay.addEventListener('click', async () => {
+        const userDoc = await getDoc(doc(db, "users", currentUser.email.toLowerCase()));
+        if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (settingsNameInput) settingsNameInput.value = data.displayName || '';
+            if (settingsStatusInput) settingsStatusInput.value = data.status || '';
         }
+        if (settingsModal) settingsModal.classList.remove('hidden');
+    });
+}
 
-        await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
-        const userPayload = { displayName: newName, status: newStatus, photoURL: photoURL, email: currentUser.email.toLowerCase() };
-        await setDoc(doc(db, "users", currentUser.email.toLowerCase()), userPayload, { merge: true });
+if (settingsForm) {
+    settingsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newName = settingsNameInput.value.trim();
+        const newStatus = settingsStatusInput.value.trim();
+        const avatarFile = settingsAvatarInput.files[0];
         
-        myAvatar.src = photoURL;
-        myDisplayName.textContent = newName;
-        settingsModal.classList.add('hidden');
-        settingsForm.reset();
-    } catch (err) { alert(err.message); }
-});
+        try {
+            let photoURL = myAvatar ? myAvatar.src : defaultAvatar;
+            if (avatarFile) {
+                photoURL = await uploadToCloudinary(avatarFile) || photoURL;
+            }
+
+            await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
+            const userPayload = { displayName: newName, status: newStatus, photoURL: photoURL, email: currentUser.email.toLowerCase() };
+            await setDoc(doc(db, "users", currentUser.email.toLowerCase()), userPayload, { merge: true });
+            
+            if (myAvatar) myAvatar.src = photoURL;
+            if (myDisplayName) myDisplayName.textContent = newName;
+            if (settingsModal) settingsModal.classList.add('hidden');
+            settingsForm.reset();
+        } catch (err) { alert(err.message); }
+    });
+}
 
 async function showUserProfile(email) {
     email = email.toLowerCase();
     let data = userCache[email];
     if (data) {
-        viewProfileAvatar.src = data.photoURL || defaultAvatar;
-        viewProfileName.textContent = data.displayName || email;
-        viewProfileEmail.textContent = email;
-        viewProfileStatus.textContent = data.status || "No status set.";
+        if (viewProfileAvatar) viewProfileAvatar.src = data.photoURL || defaultAvatar;
+        if (viewProfileName) viewProfileName.textContent = data.displayName || email;
+        if (viewProfileEmail) viewProfileEmail.textContent = email;
+        if (viewProfileStatus) viewProfileStatus.textContent = data.status || "No status set.";
         
-        const newDmBtn = dmStartBtn.cloneNode(true);
-        dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
-        newDmBtn.addEventListener('click', () => {
-            profileModal.classList.add('hidden');
-            searchUserInput.value = '';
-            const targetSidebarButton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
-            highlightSidebarBtn(targetSidebarButton);
-            callBtn.classList.remove('hidden');
-            switchChannel(email);
-        });
-        profileModal.classList.remove('hidden');
+        if (dmStartBtn) {
+            const newDmBtn = dmStartBtn.cloneNode(true);
+            dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
+            newDmBtn.addEventListener('click', () => {
+                if (profileModal) profileModal.classList.add('hidden');
+                if (searchUserInput) searchUserInput.value = '';
+                const targetSidebarButton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
+                highlightSidebarBtn(targetSidebarButton);
+                if (callBtn) callBtn.classList.remove('hidden');
+                switchChannel(email);
+            });
+        }
+        if (profileModal) profileModal.classList.remove('hidden');
     }
 }
 
-closeProfileModal.addEventListener('click', () => profileModal.classList.add('hidden'));
-closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
+if (closeProfileModal) closeProfileModal.addEventListener('click', () => profileModal.classList.add('hidden'));
+if (closeSettingsModal) closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
-mediaInput.addEventListener('change', () => {
-    if(mediaInput.files[0]) messageInput.placeholder = `📎 Ready: ${mediaInput.files[0].name}`;
-});
+if (mediaInput) {
+    mediaInput.addEventListener('change', () => {
+        if(mediaInput.files[0] && messageInput) messageInput.placeholder = `📎 Ready: ${mediaInput.files[0].name}`;
+    });
+}
 
-chatForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const text = messageInput.value.trim();
-    const file = mediaInput.files[0];
-    if (!text && !file) return;
+if (chatForm) {
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = messageInput.value.trim();
+        const file = mediaInput.files[0];
+        if (!text && !file) return;
 
-    messageInput.placeholder = "Processing asset payload...";
+        messageInput.placeholder = "Processing asset payload...";
 
-    try {
-        let finalUrl = null;
-        let fileType = null;
+        try {
+            let finalUrl = null;
+            let fileType = null;
 
-        if (file) {
-            if (file.type.startsWith('image/')) {
-                messageInput.placeholder = "Encoding image to text string...";
-                finalUrl = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result);
-                    reader.onerror = (err) => reject(err);
-                    reader.readAsDataURL(file);
-                });
-                fileType = 'image';
-            } else if (file.type.startsWith('video/')) {
-                messageInput.placeholder = "Streaming video file asset to Cloudinary...";
-                finalUrl = await uploadToCloudinary(file);
-                fileType = 'video';
+            if (file) {
+                if (file.type.startsWith('image/')) {
+                    messageInput.placeholder = "Encoding image to text string...";
+                    finalUrl = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = (err) => reject(err);
+                        reader.readAsDataURL(file);
+                    });
+                    fileType = 'image';
+                } else if (file.type.startsWith('video/')) {
+                    messageInput.placeholder = "Streaming video file asset to Cloudinary...";
+                    finalUrl = await uploadToCloudinary(file);
+                    fileType = 'video';
+                }
             }
+
+            const myData = userCache[currentUser.email.toLowerCase()] || {};
+            const payload = {
+                text: text,
+                user: currentUser.email.toLowerCase(),
+                displayName: myData.displayName || currentUser.email,
+                userAvatar: myData.photoURL || defaultAvatar,
+                timestamp: serverTimestamp(),
+                reactions: { "🔥": 0, "💀": 0, "👍": 0 },
+                ...(finalUrl && { fileUrl: finalUrl, fileType: fileType })
+            };
+
+            if (currentChatMode === "public") {
+                await addDoc(collection(db, "messages"), payload);
+            } else if (currentChatMode.startsWith("spy_")) {
+                await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
+            } else {
+                const combinedRoomId = getDMId(currentUser.email, currentChatMode);
+                await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
+            }
+
+            chatForm.reset();
+            messageInput.placeholder = "Type a message or drop a file...";
+        } catch (err) { 
+            console.error(err); 
+            messageInput.placeholder = "Error parsing attached file asset...";
         }
-
-        const myData = userCache[currentUser.email.toLowerCase()] || {};
-        const payload = {
-            text: text,
-            user: currentUser.email.toLowerCase(),
-            displayName: myData.displayName || currentUser.email,
-            userAvatar: myData.photoURL || defaultAvatar,
-            timestamp: serverTimestamp(),
-            reactions: { "🔥": 0, "💀": 0, "👍": 0 },
-            ...(finalUrl && { fileUrl: finalUrl, fileType: fileType })
-        };
-
-        if (currentChatMode === "public") {
-            await addDoc(collection(db, "messages"), payload);
-        } else if (currentChatMode.startsWith("spy_")) {
-            await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
-        } else {
-            const combinedRoomId = getDMId(currentUser.email, currentChatMode);
-            await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
-        }
-
-        chatForm.reset();
-        messageInput.placeholder = "Type a message or drop a file...";
-    } catch (err) { 
-        console.error(err); 
-        messageInput.placeholder = "Error parsing attached file asset...";
-    }
-});
+    });
+}
 
 async function handleModifyMessage(msgId, action, collectionPath, subId = null) {
     let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
@@ -485,6 +518,7 @@ async function handleModifyMessage(msgId, action, collectionPath, subId = null) 
 
 function loadMessages() {
     if (unsubscribeChat) unsubscribeChat();
+    if (!chatMessages) return;
     chatMessages.innerHTML = '';
 
     let q;
@@ -554,9 +588,12 @@ function loadMessages() {
             `;
 
             if (isSentByMe || isLoggedAsAdmin) {
-                messageEl.querySelector('.delete-trigger').addEventListener('click', () => {
-                    handleModifyMessage(msgId, 'delete', baseColl, subRoom);
-                });
+                const delTrigger = messageEl.querySelector('.delete-trigger');
+                if (delTrigger) {
+                    delTrigger.addEventListener('click', () => {
+                        handleModifyMessage(msgId, 'delete', baseColl, subRoom);
+                    });
+                }
             }
 
             messageEl.querySelectorAll('.react-trigger').forEach(chip => {
