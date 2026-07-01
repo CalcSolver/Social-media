@@ -16,10 +16,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- api.video Sandbox Engine Setup FIX ---
-// 1. CRITICAL: Replace this token placeholder with your exact api.video sandbox key
-const API_VIDEO_KEY = "YOUR_API_KEY_HERE"; 
-const API_VIDEO_BASE = "https://sandbox.api.video";
+// --- JSON2Video API Integration Setup ---
+const JSON2VIDEO_KEY = "HMvk355mgCAQZ0SYAxuoNCCK8deanBrY1EDB3TZN"; 
+const JSON2VIDEO_API = "https://api.json2video.com/v2/movies";
 
 // GIPHY Engine Keys
 const GIPHY_API_KEY = "dc6zaTOxFJmzC"; 
@@ -102,18 +101,6 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const serverCache = {};
 
-// Helper function to extract token from api.video
-async function getApiVideoToken() {
-    const response = await fetch(`${API_VIDEO_BASE}/auth/api-key`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: API_VIDEO_KEY })
-    });
-    if (!response.ok) throw new Error("api.video authentication failed. Check your API_VIDEO_KEY variable.");
-    const authData = await response.json();
-    return authData.access_token;
-}
-
 // --- Interactive Profile Click Inspector Logic ---
 function launchUserProfileInspector(targetEmail) {
     const data = userCache[targetEmail.toLowerCase()] || {};
@@ -123,7 +110,7 @@ function launchUserProfileInspector(targetEmail) {
     if (viewProfileAvatar) viewProfileAvatar.src = data.photoURL || defaultAvatar;
     if (viewProfileEmail) viewProfileEmail.textContent = data.email || targetEmail;
     
-    // Explicit visibility condition check for Server invites
+    // Check if user is the server owner to show invite controls
     if (currentChatMode === "server" && currentUser) {
         const sData = serverCache[activeServerId] || {};
         if (sData.owner === currentUser.email.toLowerCase()) {
@@ -339,7 +326,7 @@ if (disappearToggleBtn) {
     });
 }
 
-// --- Create Server with Invitation Map Setup ---
+// --- Create Server with Discord-Style Whitelist Setup ---
 if (createServerBtn) {
     createServerBtn.addEventListener('click', async () => {
         const name = newServerInput.value.trim();
@@ -347,14 +334,13 @@ if (createServerBtn) {
         const serverId = "srv_" + Date.now();
         const myCleanEmail = currentUser.email.toLowerCase().replace(/[@.]/g, '_');
         
-        // AllowedMembers object mapping acts as invite control check
         await setDoc(doc(db, "servers", serverId), {
             id: serverId, 
             name: name, 
             owner: currentUser.email.toLowerCase(), 
             created: serverTimestamp(),
             allowedMembers: {
-                [myCleanEmail]: true
+                [myCleanEmail]: true // Whitelist the creator automatically
             }
         });
         newServerInput.value = '';
@@ -483,14 +469,14 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// --- Conditional Invitation Filter Rule FIX ---
+// --- Discord Style Invitation Filter Query ---
 function listenForServersList() {
     if (unsubscribeServers) unsubscribeServers();
     if (!currentUser) return;
     
     const mySanitizedFilter = currentUser.email.toLowerCase().replace(/[@.]/g, '_');
     
-    // Filters servers collection directly to records matching user's whitelist visibility rules
+    // Only fetch servers where the user's email exists inside the allowedMembers map
     const serverQuery = query(
         collection(db, "servers"), 
         where(`allowedMembers.${mySanitizedFilter}`, "==", true)
@@ -585,7 +571,7 @@ function highlightSidebarBtn(activeButton) {
     if (activeButton) activeButton.style.background = '#4f545c';
 }
 
-// --- api.video Submission Handling FIX ---
+// --- JSON2Video Cloud Upload Submission Pipeline ---
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -598,47 +584,49 @@ if (chatForm) {
             let fileType = null;
             
             if (file) {
-                if (file.type.startsWith('image/')) {
-                    finalUrl = await new Promise((res) => {
-                        const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file);
-                    });
-                    fileType = 'image';
-                } else if (file.type.startsWith('video/')) {
-                    currentRoomTitle.textContent = "Processing api.video payload... ⏳";
+                currentRoomTitle.textContent = "Processing layout media stream... ⏳";
+                
+                // Convert file locally to base64 formatting
+                finalUrl = await new Promise((res, rej) => {
+                    const r = new FileReader();
+                    r.onload = () => res(r.result);
+                    r.onerror = (err) => rej(err);
+                    r.readAsDataURL(file);
+                });
 
-                    const accessToken = await getApiVideoToken();
+                if (file.type.startsWith('video/')) {
+                    fileType = 'video';
+                    currentRoomTitle.textContent = "Rendering video via JSON2Video... 🎬";
 
-                    // FIX: Explicitly enforce mp4Support property flags to allow basic video player elements
-                    const containerResponse = await fetch(`${API_VIDEO_BASE}/videos`, {
+                    // Construct project composition layout for rendering
+                    const videoPayload = {
+                        "resolution": "hd",
+                        "quality": "high",
+                        "scenes": [{
+                            "elements": [{
+                                "type": "video",
+                                "src": finalUrl
+                            }]
+                        }]
+                    };
+                    
+                    const response = await fetch(JSON2VIDEO_API, {
                         method: "POST",
                         headers: {
-                            "Authorization": `Bearer ${accessToken}`,
+                            "x-api-key": JSON2VIDEO_KEY,
                             "Content-Type": "application/json"
                         },
-                        body: JSON.stringify({ 
-                            title: `Chat Upload - ${Date.now()}`, 
-                            public: true,
-                            mp4Support: true 
-                        })
+                        body: JSON.stringify(videoPayload)
                     });
-                    if (!containerResponse.ok) throw new Error("Could not register api.video container shell.");
-                    const videoContainer = await containerResponse.json();
-                    const videoId = videoContainer.videoId;
-
-                    const uploadData = new FormData();
-                    uploadData.append("file", file);
-
-                    const uploadResponse = await fetch(`${API_VIDEO_BASE}/videos/${videoId}/source`, {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${accessToken}` },
-                        body: uploadData
-                    });
-                    if (!uploadResponse.ok) throw new Error("Binary transfer to api.video failed.");
-                    const uploadResult = await uploadResponse.json();
-
-                    // FIX: Access explicit progressive playback properties safely
-                    finalUrl = uploadResult.assets.mp4 || uploadResult.assets.player || `https://sandbox.api.video/vod/${videoId}/mp4/source.mp4`; 
-                    fileType = 'video';
+                    
+                    if (!response.ok) throw new Error("JSON2Video failed to process render project.");
+                    const renderResult = await response.json();
+                    
+                    if (renderResult.movie && renderResult.movie.url) {
+                        finalUrl = renderResult.movie.url;
+                    }
+                } else {
+                    fileType = 'image';
                 }
             }
 
@@ -665,7 +653,7 @@ if (chatForm) {
             mediaInput.value = "";
         } catch (err) { 
             console.error(err);
-            alert("Video upload process encountered an error: " + err.message);
+            alert("Media production pipeline error: " + err.message);
         } finally {
             switchChannel(currentChatMode, activeServerId);
         }
@@ -734,7 +722,6 @@ function loadMessages() {
                 if (data.fileType === 'video') {
                     mediaMarkup = `
                         <div style="margin-top: 5px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); max-width: 300px;">
-                            <a href="${data.fileUrl}" target="_blank" style="color: #00b0f4; font-size: 12px; text-decoration: underline; display: block; margin-bottom: 6px; word-break: break-all;">🔗 View Video File (${data.fileUrl.substring(0, 30)}...)</a>
                             <video src="${data.fileUrl}" style="max-width:100%; border-radius:4px; background:#000;" controls playsinline></video>
                         </div>
                     `;
