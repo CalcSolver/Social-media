@@ -16,11 +16,15 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Request standard OS notification wake permissions early
+if (typeof window !== "undefined" && "Notification" in window) {
+    Notification.requestPermission();
+}
+
 // Target Bindings
 const targetPublicBtn = document.getElementById('target-public');
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
-const messagingContainer = document.getElementById('messaging-container');
 const authForm = document.getElementById('auth-form');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -35,7 +39,11 @@ const myProfileDisplay = document.getElementById('my-profile-display');
 const myAvatar = document.getElementById('my-avatar');
 const myDisplayName = document.getElementById('my-displayName');
 const currentRoomTitle = document.getElementById('current-room-title');
+const serverAdminIndicator = document.getElementById('server-admin-indicator');
 const usersList = document.getElementById('users-list');
+const serversList = document.getElementById('servers-list');
+const newServerInput = document.getElementById('new-server-input');
+const createServerBtn = document.getElementById('create-server-btn');
 const searchUserInput = document.getElementById('search-user-input');
 const searchUserBtn = document.getElementById('search-user-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -80,12 +88,14 @@ const settingsStatusInput = document.getElementById('settings-status-input');
 let isSignUpMode = false;
 let currentUser = null;
 let currentChatMode = "public"; 
+let activeServerId = null;
 let adminSpyRoomId = null;
 let unsubscribeChat = null;
 let unsubscribePresence = null;
+let unsubscribeServers = null;
 let typingTimeout = null;
 let unreadNotificationsCount = 0;
-let disappearModeActive = false; // Self-destruct chat status tracking link
+let disappearModeActive = false;
 
 let myPeerInstance = null;
 let currentMediaConnection = null;
@@ -93,20 +103,18 @@ let localMediaStream = null;
 
 const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
+const serverCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
 
-// Audio Synth Generation Engine (No static audio assets required!)
 function playNotificationSound(type = 'message') {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        
         osc.connect(gain);
         gain.connect(ctx.destination);
         
         if (type === 'call') {
-            // High-low FaceTime alert sound
             osc.type = 'sine';
             osc.frequency.setValueAtTime(600, ctx.currentTime);
             osc.frequency.setValueAtTime(800, ctx.currentTime + 0.15);
@@ -114,20 +122,18 @@ function playNotificationSound(type = 'message') {
             osc.start();
             osc.stop(ctx.currentTime + 0.3);
         } else {
-            // Clean interface pop for standard messages
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5 Node
+            osc.frequency.setValueAtTime(523.25, ctx.currentTime);
             gain.gain.setValueAtTime(0.15, ctx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
             osc.start();
             osc.stop(ctx.currentTime + 0.15);
         }
     } catch (e) {
-        console.warn("Audio Context playback stalled by user interaction restriction parameters.");
+        console.warn("Audio Context playback stalled.");
     }
 }
 
-// Notification Management Component
 function addAlertNotification(titleText, bodyText) {
     playNotificationSound('message');
     unreadNotificationsCount++;
@@ -136,8 +142,13 @@ function addAlertNotification(titleText, bodyText) {
         notiBadge.style.display = "inline-block";
     }
     
+    // Fallback trigger if tab is running but out of direct viewport view context
+    if (Notification.permission === "granted") {
+        new Notification(titleText, { body: bodyText });
+    }
+    
     const alertRow = document.createElement('div');
-    alertRow.style = "padding: 8px; border-bottom: 1px solid #444; color: #fff; font-size: 12px; text-align: left;";
+    alertRow.style = "padding: 8px; border-bottom: 1px solid #333; color: #fff; font-size: 11px; text-align: left;";
     alertRow.innerHTML = `<strong>${escapeHTML(titleText)}</strong><br><span style="color:#b9bbbe;">${escapeHTML(bodyText)}</span>`;
     
     if (notiList.textContent === "No new notifications") {
@@ -156,7 +167,6 @@ if (notiToggleBtn) {
     });
 }
 
-// Self-Destruct Switch Toggle Handler
 if (disappearToggleBtn) {
     disappearToggleBtn.addEventListener('click', () => {
         disappearModeActive = !disappearModeActive;
@@ -170,26 +180,39 @@ if (disappearToggleBtn) {
     });
 }
 
-// Rate-Limiting Check: 100 Messages Per Day Throttle Check
 function verifyMessageRateLimit() {
     const todayStr = new Date().toISOString().split('T')[0];
     const storageKey = `msg_quota_${todayStr}`;
     let currentCount = parseInt(localStorage.getItem(storageKey) || "0", 10);
-    
     if (currentCount >= 100) {
         alert("You have reached your limit of 100 messages for today.");
         return false;
     }
-    
     localStorage.setItem(storageKey, (currentCount + 1).toString());
     return true;
+}
+
+// Server Creation Logic Hook
+if (createServerBtn) {
+    createServerBtn.addEventListener('click', async () => {
+        const name = newServerInput.value.trim();
+        if (!name || !currentUser) return;
+        const serverId = "srv_" + Date.now();
+        
+        await setDoc(doc(db, "servers", serverId), {
+            id: serverId,
+            name: name,
+            owner: currentUser.email.toLowerCase(),
+            created: serverTimestamp()
+        });
+        newServerInput.value = '';
+    });
 }
 
 async function uploadToCloudinary(fileObj) {
     if (!fileObj) return null;
     const cloudName = "ddvsercvm"; 
     const uploadPreset = "my_preset"; 
-
     const formData = new FormData();
     formData.append("file", fileObj);
     formData.append("upload_preset", uploadPreset);
@@ -203,19 +226,17 @@ async function uploadToCloudinary(fileObj) {
         const data = await response.json();
         return data.secure_url; 
     } catch (err) {
-        console.error("Cloudinary Error:", err);
         return null;
     }
 }
 
-// PeerJS Initialization Function (FIXED: Complete stream exchange pipelines)
 function buildRealTimePeerConnection(userEmailCleaned) {
     if (myPeerInstance) return;
     myPeerInstance = new Peer(userEmailCleaned);
 
     myPeerInstance.on('call', async (incomingCall) => {
         playNotificationSound('call');
-        addAlertNotification("Incoming Call", "Someone is calling your device...");
+        addAlertNotification("Incoming Call", "FaceTime video connection pending payload approval...");
         
         if (confirm(`Incoming FaceTime request. Answer?`)) {
             try {
@@ -226,15 +247,14 @@ function buildRealTimePeerConnection(userEmailCleaned) {
                 incomingCall.answer(localMediaStream);
                 currentMediaConnection = incomingCall;
 
-                // FIXED: Catch the external inbound camera stream accurately
                 incomingCall.on('stream', (incomingStream) => {
                     if (remoteVideo) {
                         remoteVideo.srcObject = incomingStream;
-                        remoteVideo.play().catch(e => console.log("Autoplay block bypassed"));
+                        remoteVideo.play().catch(e => {});
                     }
                 });
             } catch (err) {
-                alert("Could not open video camera stream hardware.");
+                alert("Could not access recording mechanics.");
             }
         } else {
             incomingCall.close();
@@ -244,8 +264,8 @@ function buildRealTimePeerConnection(userEmailCleaned) {
 
 if (callBtn) {
     callBtn.addEventListener('click', async () => {
-        if (currentChatMode === "public" || currentChatMode.startsWith("spy_")) return;
-        const cleaningTarget = currentChatMode.replace(/[@.]/g, '_');
+        if (currentChatMode !== "dm") return;
+        const cleaningTarget = activeServerId.replace(/[@.]/g, '_');
         
         try {
             localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -255,11 +275,10 @@ if (callBtn) {
             const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
             currentMediaConnection = outboundCall;
 
-            // FIXED: Catch remote stream when outbound dial bridges effectively
             outboundCall.on('stream', (incomingStream) => {
                 if (remoteVideo) {
                     remoteVideo.srcObject = incomingStream;
-                    remoteVideo.play().catch(e => console.log("Autoplay block bypassed"));
+                    remoteVideo.play().catch(e => {});
                 }
             });
         } catch (err) {
@@ -290,7 +309,7 @@ if (targetPublicBtn) {
     targetPublicBtn.addEventListener('click', () => {
         highlightSidebarBtn(targetPublicBtn);
         if (callBtn) callBtn.classList.add('hidden'); 
-        switchChannel("public");
+        switchChannel("public", null);
     });
 }
 
@@ -354,13 +373,8 @@ if (logoutBtn) {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
-        
         if (adminMonitorPanel) {
-            if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-                adminMonitorPanel.classList.remove('hidden');
-            } else {
-                adminMonitorPanel.classList.add('hidden');
-            }
+            adminMonitorPanel.className = (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? "" : "hidden";
         }
 
         const userDoc = await getDoc(doc(db, "users", user.email.toLowerCase()));
@@ -372,79 +386,44 @@ onAuthStateChanged(auth, async (user) => {
         }
 
         buildRealTimePeerConnection(user.email.toLowerCase().replace(/[@.]/g, '_'));
-
         if (authContainer) authContainer.classList.add('hidden');
         if (appContainer) appContainer.classList.remove('hidden');
 
         if (targetPublicBtn) targetPublicBtn.click(); 
         listenForUserPresence();
+        listenForServersList();
     } else {
         currentUser = null;
         if (appContainer) appContainer.classList.add('hidden');
         if (authContainer) authContainer.classList.remove('hidden');
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
+        if (unsubscribeServers) unsubscribeServers();
     }
 });
 
-if (messageInput) {
-    messageInput.addEventListener('input', () => {
-        if (!currentUser) return;
-        const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
-        
-        setDoc(doc(db, "typing", roomPath), {
-            [currentUser.email.replace(/[@.]/g, '_')]: true,
-            displayName: myDisplayName ? myDisplayName.textContent : "Someone"
-        }, { merge: true });
-
-        clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-            setDoc(doc(db, "typing", roomPath), {
-                [currentUser.email.replace(/[@.]/g, '_')]: false
-            }, { merge: true });
-        }, 2000);
+function listenForServersList() {
+    if (unsubscribeServers) unsubscribeServers();
+    unsubscribeServers = onSnapshot(collection(db, "servers"), (snapshot) => {
+        if (!serversList) return;
+        serversList.innerHTML = '';
+        snapshot.forEach((docSnap) => {
+            const sData = docSnap.data();
+            serverCache[sData.id] = sData;
+            
+            const btn = document.createElement('button');
+            btn.className = 'target-btn';
+            btn.style = "width: 100%; padding: 8px; background: #40444b; border: none; color: #fff; text-align: left; cursor: pointer; border-radius: 4px;";
+            btn.textContent = `📁 ${sData.name}`;
+            
+            btn.addEventListener('click', () => {
+                highlightSidebarBtn(btn);
+                if (callBtn) callBtn.classList.add('hidden');
+                switchChannel("server", sData.id);
+            });
+            serversList.appendChild(btn);
+        });
     });
-}
-
-function listenForTypingIndicators(roomPath) {
-    onSnapshot(doc(db, "typing", roomPath), (snapshot) => {
-        if (!snapshot.exists()) { if (typingIndicatorBox) typingIndicatorBox.textContent = ""; return; }
-        const data = snapshot.data();
-        let typers = [];
-        for (let key in data) {
-            if (key !== "displayName" && data[key] === true && key !== currentUser.email.replace(/[@.]/g, '_')) {
-                typers.push(data.displayName || "Someone");
-            }
-        }
-        if (typingIndicatorBox) {
-            typingIndicatorBox.textContent = typers.length > 0 ? `${typers.join(', ')} is typing...` : "";
-        }
-    });
-}
-
-if (adminSpyBtn) {
-    adminSpyBtn.addEventListener('click', () => {
-        const targetRoomInput = adminRoomInput ? adminRoomInput.value.trim() : "";
-        if (!targetRoomInput) return;
-        adminSpyRoomId = targetRoomInput.toLowerCase();
-        currentChatMode = "spy_" + adminSpyRoomId;
-        highlightSidebarBtn(null);
-        if (callBtn) callBtn.classList.add('hidden');
-        if (currentRoomTitle) currentRoomTitle.textContent = `Intercept: ${adminSpyRoomId}`;
-        loadMessages();
-    });
-}
-
-if (searchUserBtn) {
-    searchUserBtn.addEventListener('click', async () => {
-        const searchEmail = searchUserInput ? searchUserInput.value.trim().toLowerCase() : "";
-        if (!searchEmail || searchEmail === currentUser.email.toLowerCase()) return;
-        await showUserProfile(searchEmail);
-    });
-}
-
-function getDMId(userA, userB) {
-    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
 }
 
 function listenForUserPresence() {
@@ -459,18 +438,18 @@ function listenForUserPresence() {
             if (userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
                 const btn = document.createElement('button');
                 btn.className = 'target-btn';
-                btn.id = `sidebar-${userData.email.toLowerCase().replace(/[@.]/g, '-')}`;
+                btn.style = "width: 100%; padding: 6px; background: none; border: none; color: #b9bbbe; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px;";
                 
-                const statusClass = userData.online ? 'status-online' : 'status-offline';
+                const statusColor = userData.online ? '#3ba55d' : '#747f8d';
                 btn.innerHTML = `
-                    <span class="status-dot ${statusClass}"></span>
-                    <img src="${userData.photoURL || defaultAvatar}" class="avatar-sm"> 
-                    ${userData.displayName || userData.email}
+                    <span style="width:8px; height:8px; background:${statusColor}; border-radius:50%; display:inline-block;"></span>
+                    <img src="${userData.photoURL || defaultAvatar}" style="width:24px; height:24px; border-radius:50%; object-fit:cover;"> 
+                    <span>${userData.displayName || userData.email}</span>
                 `;
                 btn.addEventListener('click', () => {
                     highlightSidebarBtn(btn);
                     if (callBtn) callBtn.classList.remove('hidden'); 
-                    switchChannel(userData.email.toLowerCase());
+                    switchChannel("dm", userData.email.toLowerCase());
                 });
                 usersList.appendChild(btn);
             }
@@ -479,118 +458,46 @@ function listenForUserPresence() {
 }
 
 function highlightSidebarBtn(activeButton) {
-    document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('active'));
-    if (activeButton) activeButton.classList.add('active');
+    document.querySelectorAll('.target-btn').forEach(b => b.style.background = 'none');
+    if (activeButton) activeButton.style.background = '#4f545c';
 }
 
-function switchChannel(mode) {
-    currentChatMode = mode.toLowerCase();
-    if (currentRoomTitle) currentRoomTitle.textContent = mode === "public" ? "Global Chat" : `Direct Message: ${mode}`;
-    loadMessages();
-    const roomPath = currentChatMode === "public" ? "global" : getDMId(currentUser.email, currentChatMode);
-    listenForTypingIndicators(roomPath);
-}
+function switchChannel(mode, id) {
+    currentChatMode = mode;
+    activeServerId = id;
+    if (serverAdminIndicator) serverAdminIndicator.textContent = "";
 
-if (myProfileDisplay) {
-    myProfileDisplay.addEventListener('click', async () => {
-        const userDoc = await getDoc(doc(db, "users", currentUser.email.toLowerCase()));
-        if (userDoc.exists()) {
-            const data = userDoc.data();
-            if (settingsNameInput) settingsNameInput.value = data.displayName || '';
-            if (settingsStatusInput) settingsStatusInput.value = data.status || '';
-        }
-        if (settingsModal) settingsModal.classList.remove('hidden');
-    });
-}
-
-if (settingsForm) {
-    settingsForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const newName = settingsNameInput.value.trim();
-        const newStatus = settingsStatusInput.value.trim();
-        const avatarFile = settingsAvatarInput.files[0];
-        
-        try {
-            let photoURL = myAvatar ? myAvatar.src : defaultAvatar;
-            if (avatarFile) {
-                photoURL = await uploadToCloudinary(avatarFile) || photoURL;
-            }
-
-            await updateProfile(auth.currentUser, { displayName: newName, photoURL: photoURL });
-            const userPayload = { displayName: newName, status: newStatus, photoURL: photoURL, email: currentUser.email.toLowerCase() };
-            await setDoc(doc(db, "users", currentUser.email.toLowerCase()), userPayload, { merge: true });
-            
-            if (myAvatar) myAvatar.src = photoURL;
-            if (myDisplayName) myDisplayName.textContent = newName;
-            if (settingsModal) settingsModal.classList.add('hidden');
-            settingsForm.reset();
-        } catch (err) { alert(err.message); }
-    });
-}
-
-async function showUserProfile(email) {
-    email = email.toLowerCase();
-    let data = userCache[email];
-    if (data) {
-        if (viewProfileAvatar) viewProfileAvatar.src = data.photoURL || defaultAvatar;
-        if (viewProfileName) viewProfileName.textContent = data.displayName || email;
-        if (viewProfileEmail) viewProfileEmail.textContent = email;
-        if (viewProfileStatus) viewProfileStatus.textContent = data.status || "No status set.";
-        
-        if (dmStartBtn) {
-            const newDmBtn = dmStartBtn.cloneNode(true);
-            dmStartBtn.parentNode.replaceChild(newDmBtn, dmStartBtn);
-            newDmBtn.addEventListener('click', () => {
-                if (profileModal) profileModal.classList.add('hidden');
-                if (searchUserInput) searchUserInput.value = '';
-                const targetSidebarButton = document.getElementById(`sidebar-${email.replace(/[@.]/g, '-')}`);
-                highlightSidebarBtn(targetSidebarButton);
-                if (callBtn) callBtn.classList.remove('hidden');
-                switchChannel(email);
-            });
-        }
-        if (profileModal) profileModal.classList.remove('hidden');
+    if (mode === "public") {
+        currentRoomTitle.textContent = "Global Chat";
+    } else if (mode === "server") {
+        const sData = serverCache[id] || {};
+        currentRoomTitle.textContent = `Server: ${sData.name || 'Group'}`;
+        if (serverAdminIndicator) serverAdminIndicator.textContent = `👑 Owner: ${sData.owner.split('@')[0]}`;
+    } else {
+        currentRoomTitle.textContent = `DM: ${id}`;
     }
-}
-
-if (closeProfileModal) closeProfileModal.addEventListener('click', () => profileModal.classList.add('hidden'));
-if (closeSettingsModal) closeSettingsModal.addEventListener('click', () => settingsModal.classList.add('hidden'));
-
-if (mediaInput) {
-    mediaInput.addEventListener('change', () => {
-        if(mediaInput.files[0] && messageInput) messageInput.placeholder = `📎 Ready: ${mediaInput.files[0].name}`;
-    });
+    loadMessages();
 }
 
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        // Rate Limiter Enforcement
         if (!verifyMessageRateLimit()) return;
 
         const text = messageInput.value.trim();
         const file = mediaInput.files[0];
         if (!text && !file) return;
 
-        messageInput.placeholder = "Processing asset payload...";
-
         try {
             let finalUrl = null;
             let fileType = null;
-
             if (file) {
                 if (file.type.startsWith('image/')) {
-                    messageInput.placeholder = "Encoding image to text string...";
-                    finalUrl = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result);
-                        reader.onerror = (err) => reject(err);
-                        reader.readAsDataURL(file);
+                    finalUrl = await new Promise((resolve) => {
+                        const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(file);
                     });
                     fileType = 'image';
                 } else if (file.type.startsWith('video/')) {
-                    messageInput.placeholder = "Streaming video file asset to Cloudinary...";
                     finalUrl = await uploadToCloudinary(file);
                     fileType = 'video';
                 }
@@ -603,34 +510,24 @@ if (chatForm) {
                 displayName: myData.displayName || currentUser.email,
                 userAvatar: myData.photoURL || defaultAvatar,
                 timestamp: serverTimestamp(),
-                reactions: { "🔥": 0, "💀": 0, "👍": 0 },
-                disappearing: disappearModeActive, // Flags the message to trigger self-destruction evaluation
+                disappearing: disappearModeActive,
                 ...(finalUrl && { fileUrl: finalUrl, fileType: fileType })
             };
 
             if (currentChatMode === "public") {
                 await addDoc(collection(db, "messages"), payload);
-            } else if (currentChatMode.startsWith("spy_")) {
+            } else if (currentChatMode === "server") {
+                await addDoc(collection(db, "servers", activeServerId, "messages"), payload);
+            } else if (currentChatMode === "spy_") {
                 await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
             } else {
-                const combinedRoomId = getDMId(currentUser.email, currentChatMode);
+                const combinedRoomId = getDMId(currentUser.email, activeServerId);
                 await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
             }
 
             chatForm.reset();
-            messageInput.placeholder = "Type a message or drop a file...";
-        } catch (err) { 
-            console.error(err); 
-            messageInput.placeholder = "Error parsing attached file asset...";
-        }
+        } catch (err) { console.error(err); }
     });
-}
-
-async function handleModifyMessage(msgId, action, collectionPath, subId = null) {
-    let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
-    if (action === 'delete') {
-        await deleteDoc(targetRef);
-    }
 }
 
 function loadMessages() {
@@ -644,11 +541,14 @@ function loadMessages() {
 
     if (currentChatMode === "public") {
         q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
+    } else if (currentChatMode === "server") {
+        baseColl = "servers"; subRoom = activeServerId;
+        q = query(collection(db, "servers", activeServerId, "messages"), orderBy("timestamp", "asc"));
     } else if (currentChatMode.startsWith("spy_")) {
         baseColl = "direct_messages"; subRoom = adminSpyRoomId;
         q = query(collection(db, "direct_messages", adminSpyRoomId, "messages"), orderBy("timestamp", "asc"));
     } else {
-        baseColl = "direct_messages"; subRoom = getDMId(currentUser.email, currentChatMode);
+        baseColl = "direct_messages"; subRoom = getDMId(currentUser.email, activeServerId);
         q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp", "asc"));
     }
 
@@ -656,25 +556,19 @@ function loadMessages() {
 
     unsubscribeChat = onSnapshot(q, (snapshot) => {
         chatMessages.innerHTML = '';
-        
         let newMessagesDetected = false;
 
         snapshot.forEach((docSnap) => {
             const data = docSnap.data();
             const msgId = docSnap.id;
             
-            // Self-Destruct Engine: If flagged disappear post has lived for > 10 seconds, drop it
             if (data.disappearing && data.timestamp) {
                 const msgTime = data.timestamp.toDate().getTime();
                 const nowTime = Date.now();
                 if (nowTime - msgTime > 10000) {
-                    handleModifyMessage(msgId, 'delete', baseColl, subRoom);
-                    return; 
+                    handleModifyMessage(msgId, 'delete', baseColl, subRoom); return; 
                 } else {
-                    // Schedule local DOM removal backup trigger
-                    setTimeout(() => {
-                        handleModifyMessage(msgId, 'delete', baseColl, subRoom);
-                    }, 10000 - (nowTime - msgTime));
+                    setTimeout(() => { handleModifyMessage(msgId, 'delete', baseColl, subRoom); }, 10000 - (nowTime - msgTime));
                 }
             }
 
@@ -684,83 +578,62 @@ function loadMessages() {
 
             const messageEl = document.createElement('div');
             const isSentByMe = data.user === currentUser.email.toLowerCase();
+            const serverContext = serverCache[activeServerId] || {};
+            const isServerOwner = currentChatMode === "server" && serverContext.owner === currentUser.email.toLowerCase();
             const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
             
-            messageEl.className = "msg-wrapper";
-            messageEl.style = "display: flex; gap: 10px; margin-bottom: 12px; padding: 6px; border-radius:4px;";
+            messageEl.style = "display: flex; gap: 10px; margin-bottom: 12px; padding: 4px;";
             
             let mediaMarkup = '';
             if (data.fileUrl) {
-                const isVideo = data.fileType === 'video' || data.fileUrl.match(/\.(mp4|webm|ogg|mov)$/i);
-                mediaMarkup = isVideo 
-                    ? `<video src="${data.fileUrl}" class="media-attachment" controls style="max-width:250px; border-radius:4px; margin-top:5px;"></video>`
-                    : `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Asset Link" style="max-width:250px; border-radius:4px; margin-top:5px;">`;
+                mediaMarkup = data.fileType === 'video'
+                    ? `<video src="${data.fileUrl}" style="max-width:250px; border-radius:4px;" controls></video>`
+                    : `<img src="${data.fileUrl}" style="max-width:250px; border-radius:4px;">`;
             }
 
-            const rx = data.reactions || { "🔥": 0, "💀": 0, "👍": 0 };
-            const reactionMarkup = `
-                <div class="reactions-row" style="display:flex; gap:5px; margin-top:4px;">
-                    <span class="reaction-chip react-trigger" data-emoji="🔥" data-id="${msgId}" style="cursor:pointer; background:#2f3136; padding:2px 6px; border-radius:4px; font-size:12px;">🔥 ${rx["🔥"] || 0}</span>
-                    <span class="reaction-chip react-trigger" data-emoji="💀" data-id="${msgId}" style="cursor:pointer; background:#2f3136; padding:2px 6px; border-radius:4px; font-size:12px;">💀 ${rx["💀"] || 0}</span>
-                    <span class="reaction-chip react-trigger" data-emoji="👍" data-id="${msgId}" style="cursor:pointer; background:#2f3136; padding:2px 6px; border-radius:4px; font-size:12px;">👍 ${rx["👍"] || 0}</span>
-                </div>
-            `;
-
-            const actionControlsMarkup = (isSentByMe || isLoggedAsAdmin) ? `
-                <span class="msg-actions">
-                    <button class="action-btn del delete-trigger" data-id="${msgId}" style="background:none; border:none; cursor:pointer;">❌</button>
-                </span>
+            // Server administrators or owners receive deletion access triggers
+            const actionControlsMarkup = (isSentByMe || isServerOwner || isLoggedAsAdmin) ? `
+                <button class="delete-trigger" style="background:none; border:none; color:#ed4245; cursor:pointer; font-size:11px;">❌</button>
             ` : '';
 
             const cachedUser = userCache[data.user.toLowerCase()] || {};
-            const finalName = cachedUser.displayName || data.displayName || data.user;
-            const finalAvatar = cachedUser.photoURL || data.userAvatar || defaultAvatar;
-
+            
             messageEl.innerHTML = `
-                <img src="${finalAvatar}" class="avatar-sm" style="width:36px; height:36px; border-radius:50%; margin-top:3px; object-fit:cover;">
+                <img src="${cachedUser.photoURL || defaultAvatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
                 <div style="flex:1;">
-                    <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <strong style="color:#fff; font-size:14px;">${finalName} ${data.disappearing ? '<span style="color:#f57731; font-size:11px;">⏱️ (Disappearing)</span>' : ''}</strong>
+                    <div style="display:flex; justify-content:space-between;">
+                        <strong style="color:#fff; font-size:13px;">${cachedUser.displayName || data.displayName || data.user}</strong>
                         ${actionControlsMarkup}
                     </div>
-                    <div style="margin-top:2px; color:#dcddde; font-size:14px; word-break: break-word;">${escapeHTML(data.text || '')}</div>
+                    <div style="color:#dcddde; font-size:14px; margin-top:2px;">${escapeHTML(data.text || '')}</div>
                     ${mediaMarkup}
-                    ${reactionMarkup}
                 </div>
             `;
 
-            if (isSentByMe || isLoggedAsAdmin) {
-                const delTrigger = messageEl.querySelector('.delete-trigger');
-                if (delTrigger) {
-                    delTrigger.addEventListener('click', () => {
-                        handleModifyMessage(msgId, 'delete', baseColl, subRoom);
-                    });
-                }
+            if (isSentByMe || isServerOwner || isLoggedAsAdmin) {
+                const delBtn = messageEl.querySelector('.delete-trigger');
+                if (delBtn) delBtn.addEventListener('click', () => handleModifyMessage(msgId, 'delete', baseColl, subRoom));
             }
-
-            messageEl.querySelectorAll('.react-trigger').forEach(chip => {
-                chip.addEventListener('click', (e) => {
-                    handleReactionClick(msgId, e.currentTarget.dataset.emoji, baseColl, subRoom);
-                });
-            });
 
             chatMessages.appendChild(messageEl);
         });
 
         if (initialLoadComplete && newMessagesDetected) {
-            addAlertNotification("New Message", "A participant posted in your active channel log view.");
+            addAlertNotification("Channel Update", "A new text post or group file payload arrived.");
         }
-        
         initialLoadComplete = true;
         chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 }
 
-async function handleReactionClick(msgId, emoji, collectionPath, subId) {
+async function handleModifyMessage(msgId, action, collectionPath, subId = null) {
     let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
-    await updateDoc(targetRef, { [`reactions.${emoji}`]: increment(1) });
+    if (action === 'delete') await deleteDoc(targetRef);
 }
 
+function getDMId(userA, userB) {
+    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
+}
 function escapeHTML(str) {
     return str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
 }
