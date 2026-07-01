@@ -16,9 +16,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Cloudinary Asset Engine Keys
-const CLOUD_NAME = "ddvsercvm";
-const UPLOAD_PRESET = "my_preset";
+// api.video Sandbox Engine Setup
+const API_VIDEO_KEY = "YOUR_API_KEY_HERE"; 
+const API_VIDEO_BASE = "https://sandbox.api.video";
 
 // GIPHY Engine Keys
 const GIPHY_API_KEY = "dc6zaTOxFJmzC"; 
@@ -91,6 +91,7 @@ let unsubscribeFriends = null;
 let giphySearchTimeout = null;
 let unreadNotificationsCount = 0;
 let disappearModeActive = false;
+let isSignUpMode = false;
 
 let myPeerInstance = null;
 let currentMediaConnection = null;
@@ -99,6 +100,18 @@ let localMediaStream = null;
 const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const serverCache = {};
+
+// Helper function to extract token from api.video
+async function getApiVideoToken() {
+    const response = await fetch(`${API_VIDEO_BASE}/auth/api-key`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: API_VIDEO_KEY })
+    });
+    if (!response.ok) throw new Error("api.video authentication failed.");
+    const authData = await response.json();
+    return authData.access_token;
+}
 
 // --- Interactive Profile Click Inspector Logic ---
 function launchUserProfileInspector(targetEmail) {
@@ -220,7 +233,6 @@ async function fetchGiphyMemes(searchQuery) {
                 img.style = "height: 80px; border-radius: 4px; cursor: pointer; border: 1px solid #444; min-width: 80px; object-fit: cover;";
                 
                 img.addEventListener('click', () => {
-                    // Send using structural frame type identification
                     executeDirectPostPayload(gifId, 'giphy');
                     giphyDrawer.classList.add('hidden');
                     if (messageInput) messageInput.value = "";
@@ -238,7 +250,7 @@ async function executeDirectPostPayload(urlPath, assetType) {
     try {
         const myData = userCache[currentUser.email.toLowerCase()] || {};
         const payload = {
-            text: "",
+            text: "[Sent a custom media node]",
             user: currentUser.email.toLowerCase(),
             displayName: myData.displayName || currentUser.email,
             userAvatar: myData.photoURL || defaultAvatar,
@@ -259,16 +271,32 @@ async function executeDirectPostPayload(urlPath, assetType) {
     } catch (e) { console.error(e); }
 }
 
-// --- System Notification Tray & Core Loops ---
-function addAlertNotification(titleText, bodyText) {
+// --- Clickable Advanced System Notification Tray ---
+function addAlertNotification(senderName, textContent, targetMode, targetId) {
     unreadNotificationsCount++;
     if (notiBadge) {
         notiBadge.textContent = unreadNotificationsCount;
         notiBadge.style.display = "inline-block";
     }
+    
     const alertRow = document.createElement('div');
-    alertRow.style = "padding: 8px; border-bottom: 1px solid #333; color: #fff; font-size: 11px; text-align: left;";
-    alertRow.innerHTML = `<strong>${escapeHTML(titleText)}</strong><br><span style="color:#b9bbbe;">${escapeHTML(bodyText)}</span>`;
+    alertRow.style = "padding: 10px; border-bottom: 1px solid #333; color: #fff; font-size: 12px; text-align: left; cursor: pointer; transition: background 0.2s;";
+    alertRow.addEventListener('mouseover', () => alertRow.style.background = "rgba(255,255,255,0.05)");
+    alertRow.addEventListener('mouseout', () => alertRow.style.background = "none");
+    
+    // Jump route functionality mapping directly to channels
+    alertRow.addEventListener('click', () => {
+        switchChannel(targetMode, targetId);
+        if (notiDropdown) notiDropdown.classList.add('hidden');
+    });
+
+    alertRow.innerHTML = `
+        <div style="font-weight: bold; color: #5865f2;">💬 ${escapeHTML(senderName)}</div>
+        <div style="color: #dcddde; white-space: nowrap; overflow: hidden; text-transform: none; text-overflow: ellipsis; max-width: 220px;">
+            ${escapeHTML(textContent || 'Sent an attachment')}
+        </div>
+    `;
+    
     if (notiList.textContent === "No new notifications") notiList.innerHTML = "";
     notiList.insertBefore(alertRow, notiList.firstChild);
 }
@@ -303,22 +331,25 @@ if (createServerBtn) {
     });
 }
 
-// --- Video Call Setup ---
+// --- Re-engineered FaceTime Call Logic ---
 function buildRealTimePeerConnection(userEmailCleaned) {
     if (myPeerInstance) return;
     myPeerInstance = new Peer(userEmailCleaned);
+    
     myPeerInstance.on('call', async (incomingCall) => {
         if (confirm(`Incoming FaceTime call. Answer?`)) {
             try {
                 localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 if (localVideo) localVideo.srcObject = localMediaStream;
                 if (videoCallModal) videoCallModal.classList.remove('hidden');
+                
                 incomingCall.answer(localMediaStream);
                 currentMediaConnection = incomingCall;
+                
                 incomingCall.on('stream', (incomingStream) => {
                     if (remoteVideo) remoteVideo.srcObject = incomingStream;
                 });
-            } catch (err) { alert("Device acquisition error."); }
+            } catch (err) { alert("Device configuration error."); }
         } else { incomingCall.close(); }
     });
 }
@@ -331,8 +362,10 @@ if (callBtn) {
             localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             if (localVideo) localVideo.srcObject = localMediaStream;
             if (videoCallModal) videoCallModal.classList.remove('hidden');
+            
             const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
             currentMediaConnection = outboundCall;
+            
             outboundCall.on('stream', (incomingStream) => {
                 if (remoteVideo) remoteVideo.srcObject = incomingStream;
             });
@@ -529,7 +562,7 @@ function switchChannel(mode, id) {
     loadMessages();
 }
 
-// --- Cloudinary Native Message Pipeline Handling ---
+// --- api.video Submission Handling Pipeline ---
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -548,22 +581,36 @@ if (chatForm) {
                     });
                     fileType = 'image';
                 } else if (file.type.startsWith('video/')) {
-                    const formData = new FormData();
-                    formData.append("file", file);
-                    formData.append("upload_preset", UPLOAD_PRESET);
+                    currentRoomTitle.textContent = "Processing api.video payload... ⏳";
 
-                    currentRoomTitle.textContent = "Uploading video payload... ⏳";
+                    const accessToken = await getApiVideoToken();
 
-                    const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
+                    const containerResponse = await fetch(`${API_VIDEO_BASE}/videos`, {
                         method: "POST",
-                        body: formData
+                        headers: {
+                            "Authorization": `Bearer ${accessToken}`,
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({ title: `Chat Upload - ${Date.now()}`, public: true })
                     });
+                    if (!containerResponse.ok) throw new Error("Could not register api.video container shell.");
+                    const videoContainer = await containerResponse.json();
+                    const videoId = videoContainer.videoId;
 
-                    if (!response.ok) throw new Error("Cloudinary upload failed.");
-                    
-                    const data = await response.json();
-                    finalUrl = data.secure_url; 
+                    const uploadData = new FormData();
+                    uploadData.append("file", file);
+
+                    const uploadResponse = await fetch(`${API_VIDEO_BASE}/videos/${videoId}/source`, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${accessToken}` },
+                        body: uploadData
+                    });
+                    if (!uploadResponse.ok) throw new Error("Binary transfer to api.video failed.");
+                    const uploadResult = await uploadResponse.json();
+
+                    finalUrl = uploadResult.assets.mp4 || uploadResult.assets.player; 
                     fileType = 'video';
+                    
                     switchChannel(currentChatMode, activeServerId);
                 }
             }
@@ -591,6 +638,7 @@ if (chatForm) {
             mediaInput.value = "";
         } catch (err) { 
             console.error(err);
+            alert("Video upload process encountered an error: " + err.message);
             switchChannel(currentChatMode, activeServerId);
         }
     });
@@ -602,6 +650,9 @@ function loadMessages() {
     chatMessages.innerHTML = '';
 
     let q; let baseColl = "messages"; let subRoom = null;
+    const initialModeSnapshot = currentChatMode;
+    const initialIdSnapshot = activeServerId;
+
     if (currentChatMode === "public") {
         q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
     } else if (currentChatMode === "server") {
@@ -615,7 +666,7 @@ function loadMessages() {
     let initialLoadComplete = false;
     unsubscribeChat = onSnapshot(q, (snap) => {
         chatMessages.innerHTML = '';
-        let newMessagesDetected = false;
+        let lastIncomingMessage = null;
 
         snap.forEach((docSnap) => {
             const data = docSnap.data(); const msgId = docSnap.id;
@@ -625,7 +676,9 @@ function loadMessages() {
                     handleModifyMessage(msgId, 'delete', baseColl, subRoom); return; 
                 }
             }
-            if (initialLoadComplete && data.user !== currentUser.email.toLowerCase()) { newMessagesDetected = true; }
+            if (initialLoadComplete && data.user !== currentUser.email.toLowerCase()) { 
+                lastIncomingMessage = data; 
+            }
 
             const messageEl = document.createElement('div');
             messageEl.style = "display: flex; gap: 10px; margin-bottom: 12px; padding: 4px;";
@@ -633,7 +686,6 @@ function loadMessages() {
             let mediaMarkup = '';
             if (data.fileUrl) {
                 if (data.fileType === 'video') {
-                    // Display BOTH a clickable plain link and a video element component block
                     mediaMarkup = `
                         <div style="margin-top: 5px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); max-width: 300px;">
                             <a href="${data.fileUrl}" target="_blank" style="color: #00b0f4; font-size: 12px; text-decoration: underline; display: block; margin-bottom: 6px; word-break: break-all;">🔗 View Video File (${data.fileUrl.substring(0, 30)}...)</a>
@@ -641,7 +693,6 @@ function loadMessages() {
                         </div>
                     `;
                 } else if (data.fileType === 'giphy') {
-                    // Safe sandboxed Iframe rendering layer for internal GIPHY embeds
                     mediaMarkup = `
                         <div style="margin-top: 5px; max-width: 280px; aspect-ratio: 1; border-radius: 6px; overflow: hidden;">
                             <iframe src="https://giphy.com/embed/${data.fileUrl}" width="100%" height="100%" frameBorder="0" class="giphy-embed" style="pointer-events: auto;" allowFullScreen></iframe>
@@ -680,8 +731,14 @@ function loadMessages() {
             chatMessages.appendChild(messageEl);
         });
 
-        if (initialLoadComplete && newMessagesDetected) {
-            addAlertNotification("New Payload", "An unread structural text update arrived.");
+        // Trigger dynamic alert with navigation payload parameters
+        if (initialLoadComplete && lastIncomingMessage) {
+            addAlertNotification(
+                lastIncomingMessage.displayName || lastIncomingMessage.user, 
+                lastIncomingMessage.text, 
+                initialModeSnapshot, 
+                initialIdSnapshot
+            );
         }
         initialLoadComplete = true;
         chatMessages.scrollTop = chatMessages.scrollHeight;
