@@ -11,7 +11,7 @@
 
     <div id="auth-container" class="auth-box">
         <h2>Welcome to ACMemes</h2>
-        <form id="auth-form">
+        <form id="auth-form" onsubmit="event.preventDefault();">
             <input type="email" id="email" placeholder="Email Address" required>
             <input type="password" id="password" placeholder="Password" required>
             <button type="submit" id="submit-btn">Login</button>
@@ -27,6 +27,12 @@
             </div>
             <hr>
             <button id="target-public" class="target-btn active">🌐 Global Chat</button>
+            
+            <div class="search-box-container" style="padding: 5px 10px;">
+                <input type="text" id="search-user-input" placeholder="Search user email..." style="width: 75%; padding: 4px;">
+                <button id="search-user-btn" style="width: 20%; padding: 4px;">🔍</button>
+            </div>
+
             <h3>Direct Messages</h3>
             <div id="users-list"></div>
             
@@ -48,7 +54,7 @@
             <div id="chat-messages" class="messages-log"></div>
             <div id="typing-indicator-box" class="typing-status"></div>
 
-            <form id="chat-form" class="input-row">
+            <form id="chat-form" class="input-row" onsubmit="event.preventDefault();">
                 <label for="media-input" class="attach-label">📎</label>
                 <input type="file" id="media-input" accept="image/*,video/*" style="display:none;">
                 <input type="text" id="message-input" placeholder="Type a message or drop a file..." autocomplete="off">
@@ -60,7 +66,7 @@
     <div id="profile-modal" class="modal hidden">
         <div class="modal-content">
             <span id="close-profile-modal" class="close">&times;</span>
-            <img id="view-profile-avatar" src="" alt="Profile">
+            <img id="view-profile-avatar" src="" alt="Profile" style="width:100px; height:100px; border-radius:50%;">
             <h3 id="view-profile-name"></h3>
             <p id="view-profile-email"></p>
             <p id="view-profile-status"></p>
@@ -72,7 +78,7 @@
         <div class="modal-content">
             <span id="close-settings-modal" class="close">&times;</span>
             <h3>Update Profile</h3>
-            <form id="settings-form">
+            <form id="settings-form" onsubmit="event.preventDefault();">
                 <label>Display Name</label>
                 <input type="text" id="settings-name-input" required>
                 <label>Status Message</label>
@@ -85,21 +91,22 @@
     </div>
 
     <div id="video-call-modal" class="modal hidden">
-        <div class="modal-content video-grid-box">
-            <h3>Live Video Chat</h3>
-            <div class="video-container">
+        <div class="modal-content video-grid-box" style="background: #2f3136; padding: 20px; border-radius: 8px; text-align: center;">
+            <h3 style="color: #fff;">Live Video Chat</h3>
+            <div class="video-container" style="display: flex; gap: 20px; justify-content: center; margin: 20px 0;">
                 <div>
-                    <video id="remote-video" autoplay playsinline></video>
-                    <p>Friend</p>
+                    <video id="remote-video" autoplay playsinline style="width: 300px; background: #000; border-radius: 6px;"></video>
+                    <p style="color: #b9bbbe;">Friend</p>
                 </div>
                 <div>
-                    <video id="local-video" autoplay playsinline muted></video>
-                    <p>You (Your Camera)</p>
+                    <video id="local-video" autoplay playsinline muted style="width: 300px; background: #000; border-radius: 6px;"></video>
+                    <p style="color: #b9bbbe;">You (Your Camera)</p>
                 </div>
             </div>
-            <button id="end-call-btn" class="action-btn del">Hang Up ❌</button>
+            <button id="end-call-btn" class="action-btn del" style="background: #ed4245; color: #fff; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Hang Up ❌</button>
         </div>
     </div>
 
+    <script type="module" src="app.js"></script>
 </body>
 </html>
