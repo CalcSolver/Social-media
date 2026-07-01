@@ -16,11 +16,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- Cloudinary Global Upload Settings ---
-// Using a standard public unsigned preset for instant developer testing
-const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/demo/image/upload";
-const CLOUDINARY_PRESET = "docs_upload_example_preset";
-
 // GIPHY Engine Keys
 const GIPHY_API_KEY = "dc6zaTOxFJmzC"; 
 const giphyToggleBtn = document.getElementById('giphy-toggle-btn');
@@ -581,21 +576,28 @@ if (chatForm) {
                 currentRoomTitle.textContent = "Broadcasting media to global web cloud... 🌐";
                 fileType = file.type.startsWith('video/') ? 'video' : 'image';
                 
-                // Pack file raw data directly into standard FormData request
+                // Active Cloudinary Parameters
+                const YOUR_CLOUD_NAME = "ddvsercvm"; 
+                const YOUR_UNSIGNED_PRESET = "chat_preset";
+                
+                // Dynamic routing depending on media format payload type
+                const targetEndpoint = `https://api.cloudinary.com/v1_1/${YOUR_CLOUD_NAME}/${fileType}/upload`;
+                
                 const formData = new FormData();
                 formData.append("file", file);
-                formData.append("upload_preset", CLOUDINARY_PRESET);
+                formData.append("upload_preset", YOUR_UNSIGNED_PRESET);
                 
-                // Post directly to Cloudinary open intake pipeline
-                const response = await fetch(CLOUDINARY_URL, {
+                const response = await fetch(targetEndpoint, {
                     method: "POST",
                     body: formData
                 });
                 
-                if (!response.ok) throw new Error("Cloudinary engine upload rejected.");
-                const data = await response.json();
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || "Cloudinary upload rejected.");
+                }
                 
-                // This link is globally accessible by anyone reading your Firestore database!
+                const data = await response.json();
                 finalUrl = data.secure_url;
             }
 
