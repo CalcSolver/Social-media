@@ -16,7 +16,12 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Request standard OS notification wake permissions early
+// GIPHY API Engine Configuration
+const GIPHY_API_KEY = "dc6zaTOxFJmzC"; // Public beta key for development & deployment testing
+const giphyToggleBtn = document.getElementById('giphy-toggle-btn');
+const giphyDrawer = document.getElementById('giphy-drawer');
+const giphyResultsContainer = document.getElementById('giphy-results-container');
+
 if (typeof window !== "undefined" && "Notification" in window) {
     Notification.requestPermission();
 }
@@ -94,6 +99,7 @@ let unsubscribeChat = null;
 let unsubscribePresence = null;
 let unsubscribeServers = null;
 let typingTimeout = null;
+let giphySearchTimeout = null;
 let unreadNotificationsCount = 0;
 let disappearModeActive = false;
 
@@ -129,9 +135,7 @@ function playNotificationSound(type = 'message') {
             osc.start();
             osc.stop(ctx.currentTime + 0.15);
         }
-    } catch (e) {
-        console.warn("Audio Context playback stalled.");
-    }
+    } catch (e) {}
 }
 
 function addAlertNotification(titleText, bodyText) {
@@ -141,8 +145,6 @@ function addAlertNotification(titleText, bodyText) {
         notiBadge.textContent = unreadNotificationsCount;
         notiBadge.style.display = "inline-block";
     }
-    
-    // Fallback trigger if tab is running but out of direct viewport view context
     if (Notification.permission === "granted") {
         new Notification(titleText, { body: bodyText });
     }
@@ -155,6 +157,94 @@ function addAlertNotification(titleText, bodyText) {
         notiList.innerHTML = "";
     }
     notiList.insertBefore(alertRow, notiList.firstChild);
+}
+
+// GIPHY Drawer Open / Close Processing
+if (giphyToggleBtn && giphyDrawer) {
+    giphyToggleBtn.addEventListener('click', () => {
+        giphyDrawer.classList.toggle('hidden');
+        if (!giphyDrawer.classList.contains('hidden')) {
+            fetchGiphyMemes("trending memes");
+        }
+    });
+}
+
+// Intercepts input actions on message bar to feed GIPHY dynamic searches
+if (messageInput) {
+    messageInput.addEventListener('input', () => {
+        if (giphyDrawer && !giphyDrawer.classList.contains('hidden')) {
+            clearTimeout(giphySearchTimeout);
+            giphySearchTimeout = setTimeout(() => {
+                const searchVal = messageInput.value.trim();
+                fetchGiphyMemes(searchVal || "trending memes");
+            }, 500);
+        }
+    });
+}
+
+async function fetchGiphyMemes(searchQuery) {
+    if (!giphyResultsContainer) return;
+    try {
+        const url = `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(searchQuery)}&limit=12&rating=g`;
+        const res = await fetch(url);
+        const json = await res.json();
+        
+        giphyResultsContainer.innerHTML = "";
+        if (json.data && json.data.length > 0) {
+            json.data.forEach(gifObj => {
+                const gifUrl = gifObj.images.fixed_height_small.url;
+                const originalUrl = gifObj.images.original.url;
+                
+                const img = document.createElement('img');
+                img.src = gifUrl;
+                img.style = "height: 80px; border-radius: 4px; cursor: pointer; border: 1px solid #444; object-fit: cover;";
+                img.alt = "Meme Element";
+                
+                // Selects the image immediately and drops it into Firebase
+                img.addEventListener('click', () => {
+                    executeDirectImagePost(originalUrl, 'image');
+                    giphyDrawer.classList.add('hidden');
+                    if (messageInput) messageInput.value = "";
+                });
+                giphyResultsContainer.appendChild(img);
+            });
+        } else {
+            giphyResultsContainer.innerHTML = `<span style="color: #b9bbbe; font-size:12px; padding:10px;">No memes found...</span>`;
+        }
+    } catch (err) {
+        console.error("Giphy Search Failed", err);
+    }
+}
+
+// Direct submission script pipeline for fast-sending custom web attachments (GIPHY memes)
+async function executeDirectImagePost(urlPath, assetType) {
+    if (!verifyMessageRateLimit() || !currentUser) return;
+    try {
+        const myData = userCache[currentUser.email.toLowerCase()] || {};
+        const payload = {
+            text: "",
+            user: currentUser.email.toLowerCase(),
+            displayName: myData.displayName || currentUser.email,
+            userAvatar: myData.photoURL || defaultAvatar,
+            timestamp: serverTimestamp(),
+            disappearing: disappearModeActive,
+            fileUrl: urlPath,
+            fileType: assetType
+        };
+
+        if (currentChatMode === "public") {
+            await addDoc(collection(db, "messages"), payload);
+        } else if (currentChatMode === "server") {
+            await addDoc(collection(db, "servers", activeServerId, "messages"), payload);
+        } else if (currentChatMode === "spy_") {
+            await addDoc(collection(db, "direct_messages", adminSpyRoomId, "messages"), payload);
+        } else {
+            const combinedRoomId = getDMId(currentUser.email, activeServerId);
+            await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
+        }
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 if (notiToggleBtn) {
@@ -192,13 +282,11 @@ function verifyMessageRateLimit() {
     return true;
 }
 
-// Server Creation Logic Hook
 if (createServerBtn) {
     createServerBtn.addEventListener('click', async () => {
         const name = newServerInput.value.trim();
         if (!name || !currentUser) return;
         const serverId = "srv_" + Date.now();
-        
         await setDoc(doc(db, "servers", serverId), {
             id: serverId,
             name: name,
@@ -216,7 +304,6 @@ async function uploadToCloudinary(fileObj) {
     const formData = new FormData();
     formData.append("file", fileObj);
     formData.append("upload_preset", uploadPreset);
-
     try {
         const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
             method: "POST",
@@ -233,20 +320,16 @@ async function uploadToCloudinary(fileObj) {
 function buildRealTimePeerConnection(userEmailCleaned) {
     if (myPeerInstance) return;
     myPeerInstance = new Peer(userEmailCleaned);
-
     myPeerInstance.on('call', async (incomingCall) => {
         playNotificationSound('call');
         addAlertNotification("Incoming Call", "FaceTime video connection pending payload approval...");
-        
         if (confirm(`Incoming FaceTime request. Answer?`)) {
             try {
                 localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 if (localVideo) localVideo.srcObject = localMediaStream;
                 if (videoCallModal) videoCallModal.classList.remove('hidden');
-
                 incomingCall.answer(localMediaStream);
                 currentMediaConnection = incomingCall;
-
                 incomingCall.on('stream', (incomingStream) => {
                     if (remoteVideo) {
                         remoteVideo.srcObject = incomingStream;
@@ -266,15 +349,12 @@ if (callBtn) {
     callBtn.addEventListener('click', async () => {
         if (currentChatMode !== "dm") return;
         const cleaningTarget = activeServerId.replace(/[@.]/g, '_');
-        
         try {
             localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             if (localVideo) localVideo.srcObject = localMediaStream;
             if (videoCallModal) videoCallModal.classList.remove('hidden');
-
             const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
             currentMediaConnection = outboundCall;
-
             outboundCall.on('stream', (incomingStream) => {
                 if (remoteVideo) {
                     remoteVideo.srcObject = incomingStream;
@@ -333,7 +413,6 @@ if (authForm) {
         e.preventDefault();
         const email = emailInput.value.trim().toLowerCase();
         const password = passwordInput.value;
-
         try {
             if (isSignUpMode) {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -351,9 +430,7 @@ if (authForm) {
                 await signInWithEmailAndPassword(auth, email, password);
                 await updateDoc(doc(db, "users", email), { online: true });
             }
-        } catch (err) { 
-            alert(err.message); 
-        }
+        } catch (err) { alert(err.message); }
     });
 }
 
@@ -362,10 +439,7 @@ if (logoutBtn) {
         if (currentUser) {
             await updateDoc(doc(db, "users", currentUser.email.toLowerCase()), { online: false });
         }
-        if (myPeerInstance) {
-            myPeerInstance.destroy();
-            myPeerInstance = null;
-        }
+        if (myPeerInstance) { myPeerInstance.destroy(); myPeerInstance = null; }
         signOut(auth);
     });
 }
@@ -376,7 +450,6 @@ onAuthStateChanged(auth, async (user) => {
         if (adminMonitorPanel) {
             adminMonitorPanel.className = (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? "" : "hidden";
         }
-
         const userDoc = await getDoc(doc(db, "users", user.email.toLowerCase()));
         if (userDoc.exists() && myDisplayName && myAvatar) {
             const data = userDoc.data();
@@ -384,11 +457,9 @@ onAuthStateChanged(auth, async (user) => {
             myAvatar.src = data.photoURL || defaultAvatar;
             userCache[user.email.toLowerCase()] = data;
         }
-
         buildRealTimePeerConnection(user.email.toLowerCase().replace(/[@.]/g, '_'));
         if (authContainer) authContainer.classList.add('hidden');
         if (appContainer) appContainer.classList.remove('hidden');
-
         if (targetPublicBtn) targetPublicBtn.click(); 
         listenForUserPresence();
         listenForServersList();
@@ -410,12 +481,10 @@ function listenForServersList() {
         snapshot.forEach((docSnap) => {
             const sData = docSnap.data();
             serverCache[sData.id] = sData;
-            
             const btn = document.createElement('button');
             btn.className = 'target-btn';
             btn.style = "width: 100%; padding: 8px; background: #40444b; border: none; color: #fff; text-align: left; cursor: pointer; border-radius: 4px;";
             btn.textContent = `📁 ${sData.name}`;
-            
             btn.addEventListener('click', () => {
                 highlightSidebarBtn(btn);
                 if (callBtn) callBtn.classList.add('hidden');
@@ -423,6 +492,22 @@ function listenForServersList() {
             });
             serversList.appendChild(btn);
         });
+    });
+}
+
+if (messageInput) {
+    messageInput.addEventListener('input', () => {
+        if (!currentUser) return;
+        const roomPath = currentChatMode === "public" ? "global" : (currentChatMode === "server" ? activeServerId : getDMId(currentUser.email, activeServerId));
+        setDoc(doc(db, "typing", roomPath), {
+            [currentUser.email.replace(/[@.]/g, '_')]: true,
+            displayName: myDisplayName ? myDisplayName.textContent : "Someone"
+        }, { merge: true });
+
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            setDoc(doc(db, "typing", roomPath), { [currentUser.email.replace(/[@.]/g, '_')]: false }, { merge: true });
+        }, 2000);
     });
 }
 
@@ -434,12 +519,10 @@ function listenForUserPresence() {
         snapshot.forEach((docSnap) => {
             const userData = docSnap.data();
             userCache[userData.email.toLowerCase()] = userData;
-            
             if (userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
                 const btn = document.createElement('button');
                 btn.className = 'target-btn';
                 btn.style = "width: 100%; padding: 6px; background: none; border: none; color: #b9bbbe; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px;";
-                
                 const statusColor = userData.online ? '#3ba55d' : '#747f8d';
                 btn.innerHTML = `
                     <span style="width:8px; height:8px; background:${statusColor}; border-radius:50%; display:inline-block;"></span>
@@ -466,6 +549,7 @@ function switchChannel(mode, id) {
     currentChatMode = mode;
     activeServerId = id;
     if (serverAdminIndicator) serverAdminIndicator.textContent = "";
+    if (giphyDrawer) giphyDrawer.classList.add('hidden');
 
     if (mode === "public") {
         currentRoomTitle.textContent = "Global Chat";
@@ -483,14 +567,12 @@ if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!verifyMessageRateLimit()) return;
-
         const text = messageInput.value.trim();
         const file = mediaInput.files[0];
         if (!text && !file) return;
 
         try {
-            let finalUrl = null;
-            let fileType = null;
+            let finalUrl = null; let fileType = null;
             if (file) {
                 if (file.type.startsWith('image/')) {
                     finalUrl = await new Promise((resolve) => {
@@ -524,7 +606,6 @@ if (chatForm) {
                 const combinedRoomId = getDMId(currentUser.email, activeServerId);
                 await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
             }
-
             chatForm.reset();
         } catch (err) { console.error(err); }
     });
@@ -535,10 +616,7 @@ function loadMessages() {
     if (!chatMessages) return;
     chatMessages.innerHTML = '';
 
-    let q;
-    let baseColl = "messages";
-    let subRoom = null;
-
+    let q; let baseColl = "messages"; let subRoom = null;
     if (currentChatMode === "public") {
         q = query(collection(db, "messages"), orderBy("timestamp", "asc"), limit(60));
     } else if (currentChatMode === "server") {
@@ -553,15 +631,12 @@ function loadMessages() {
     }
 
     let initialLoadComplete = false;
-
     unsubscribeChat = onSnapshot(q, (snapshot) => {
         chatMessages.innerHTML = '';
         let newMessagesDetected = false;
 
         snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            const msgId = docSnap.id;
-            
+            const data = docSnap.data(); const msgId = docSnap.id;
             if (data.disappearing && data.timestamp) {
                 const msgTime = data.timestamp.toDate().getTime();
                 const nowTime = Date.now();
@@ -571,10 +646,7 @@ function loadMessages() {
                     setTimeout(() => { handleModifyMessage(msgId, 'delete', baseColl, subRoom); }, 10000 - (nowTime - msgTime));
                 }
             }
-
-            if (initialLoadComplete && data.user !== currentUser.email.toLowerCase()) {
-                newMessagesDetected = true;
-            }
+            if (initialLoadComplete && data.user !== currentUser.email.toLowerCase()) { newMessagesDetected = true; }
 
             const messageEl = document.createElement('div');
             const isSentByMe = data.user === currentUser.email.toLowerCase();
@@ -583,7 +655,6 @@ function loadMessages() {
             const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
             
             messageEl.style = "display: flex; gap: 10px; margin-bottom: 12px; padding: 4px;";
-            
             let mediaMarkup = '';
             if (data.fileUrl) {
                 mediaMarkup = data.fileType === 'video'
@@ -591,13 +662,11 @@ function loadMessages() {
                     : `<img src="${data.fileUrl}" style="max-width:250px; border-radius:4px;">`;
             }
 
-            // Server administrators or owners receive deletion access triggers
             const actionControlsMarkup = (isSentByMe || isServerOwner || isLoggedAsAdmin) ? `
                 <button class="delete-trigger" style="background:none; border:none; color:#ed4245; cursor:pointer; font-size:11px;">❌</button>
             ` : '';
 
             const cachedUser = userCache[data.user.toLowerCase()] || {};
-            
             messageEl.innerHTML = `
                 <img src="${cachedUser.photoURL || defaultAvatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
                 <div style="flex:1;">
@@ -609,12 +678,10 @@ function loadMessages() {
                     ${mediaMarkup}
                 </div>
             `;
-
             if (isSentByMe || isServerOwner || isLoggedAsAdmin) {
                 const delBtn = messageEl.querySelector('.delete-trigger');
                 if (delBtn) delBtn.addEventListener('click', () => handleModifyMessage(msgId, 'delete', baseColl, subRoom));
             }
-
             chatMessages.appendChild(messageEl);
         });
 
@@ -630,10 +697,5 @@ async function handleModifyMessage(msgId, action, collectionPath, subId = null) 
     let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
     if (action === 'delete') await deleteDoc(targetRef);
 }
-
-function getDMId(userA, userB) {
-    return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_');
-}
-function escapeHTML(str) {
-    return str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
-}
+function getDMId(userA, userB) { return [userA.toLowerCase(), userB.toLowerCase()].sort().join("-v-").replace(/[@.]/g, '_'); }
+function escapeHTML(str) { return str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t)); }
