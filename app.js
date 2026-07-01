@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, query, orderBy, limit, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, setDoc, getDoc, query, orderBy, limit, onSnapshot, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCVF-wL74rBralgDJhxATWFmDoyWcHRrro",
@@ -16,7 +16,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// api.video Sandbox Engine Setup
+// --- api.video Sandbox Engine Setup FIX ---
+// 1. CRITICAL: Replace this token placeholder with your exact api.video sandbox key
 const API_VIDEO_KEY = "YOUR_API_KEY_HERE"; 
 const API_VIDEO_BASE = "https://sandbox.api.video";
 
@@ -108,7 +109,7 @@ async function getApiVideoToken() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey: API_VIDEO_KEY })
     });
-    if (!response.ok) throw new Error("api.video authentication failed.");
+    if (!response.ok) throw new Error("api.video authentication failed. Check your API_VIDEO_KEY variable.");
     const authData = await response.json();
     return authData.access_token;
 }
@@ -122,7 +123,42 @@ function launchUserProfileInspector(targetEmail) {
     if (viewProfileAvatar) viewProfileAvatar.src = data.photoURL || defaultAvatar;
     if (viewProfileEmail) viewProfileEmail.textContent = data.email || targetEmail;
     
+    // Explicit visibility condition check for Server invites
+    if (currentChatMode === "server" && currentUser) {
+        const sData = serverCache[activeServerId] || {};
+        if (sData.owner === currentUser.email.toLowerCase()) {
+            addFriendBtn.textContent = "Invite to Server ✉️";
+            addFriendBtn.onclick = async () => {
+                await updateDoc(doc(db, "servers", activeServerId), {
+                    [`allowedMembers.${targetSelectedProfileEmail.replace(/[@.]/g, '_')}`]: true
+                });
+                alert(`Successfully invited ${targetSelectedProfileEmail} to this server!`);
+                if (profileModal) profileModal.classList.add('hidden');
+            };
+        } else {
+            resetDefaultFriendAction();
+        }
+    } else {
+        resetDefaultFriendAction();
+    }
+    
     if (profileModal) profileModal.classList.remove('hidden');
+}
+
+function resetDefaultFriendAction() {
+    addFriendBtn.textContent = "Add Friend ⭐";
+    addFriendBtn.onclick = async () => {
+        if (!currentUser || !targetSelectedProfileEmail) return;
+        try {
+            const cleanUserEmail = currentUser.email.toLowerCase();
+            await setDoc(doc(db, "users", cleanUserEmail, "friends", targetSelectedProfileEmail), {
+                email: targetSelectedProfileEmail,
+                addedAt: serverTimestamp()
+            });
+            alert("Added to Friends list successfully!");
+            if (profileModal) profileModal.classList.add('hidden');
+        } catch (err) { console.error(err); }
+    };
 }
 
 if (closeProfileModal) {
@@ -137,21 +173,6 @@ if (dmStartBtn) {
         if (profileModal) profileModal.classList.add('hidden');
         if (callBtn) callBtn.classList.remove('hidden'); 
         switchChannel("dm", targetSelectedProfileEmail);
-    });
-}
-
-if (addFriendBtn) {
-    addFriendBtn.addEventListener('click', async () => {
-        if (!currentUser || !targetSelectedProfileEmail) return;
-        try {
-            const cleanUserEmail = currentUser.email.toLowerCase();
-            await setDoc(doc(db, "users", cleanUserEmail, "friends", targetSelectedProfileEmail), {
-                email: targetSelectedProfileEmail,
-                addedAt: serverTimestamp()
-            });
-            alert("Added to Friends list successfully!");
-            if (profileModal) profileModal.classList.add('hidden');
-        } catch (err) { console.error(err); }
     });
 }
 
@@ -284,7 +305,6 @@ function addAlertNotification(senderName, textContent, targetMode, targetId) {
     alertRow.addEventListener('mouseover', () => alertRow.style.background = "rgba(255,255,255,0.05)");
     alertRow.addEventListener('mouseout', () => alertRow.style.background = "none");
     
-    // Jump route functionality mapping directly to channels
     alertRow.addEventListener('click', () => {
         switchChannel(targetMode, targetId);
         if (notiDropdown) notiDropdown.classList.add('hidden');
@@ -319,19 +339,29 @@ if (disappearToggleBtn) {
     });
 }
 
+// --- Create Server with Invitation Map Setup ---
 if (createServerBtn) {
     createServerBtn.addEventListener('click', async () => {
         const name = newServerInput.value.trim();
         if (!name || !currentUser) return;
         const serverId = "srv_" + Date.now();
+        const myCleanEmail = currentUser.email.toLowerCase().replace(/[@.]/g, '_');
+        
+        // AllowedMembers object mapping acts as invite control check
         await setDoc(doc(db, "servers", serverId), {
-            id: serverId, name: name, owner: currentUser.email.toLowerCase(), created: serverTimestamp()
+            id: serverId, 
+            name: name, 
+            owner: currentUser.email.toLowerCase(), 
+            created: serverTimestamp(),
+            allowedMembers: {
+                [myCleanEmail]: true
+            }
         });
         newServerInput.value = '';
     });
 }
 
-// --- Re-engineered FaceTime Call Logic ---
+// --- FaceTime Call Logic ---
 function buildRealTimePeerConnection(userEmailCleaned) {
     if (myPeerInstance) return;
     myPeerInstance = new Peer(userEmailCleaned);
@@ -453,9 +483,20 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
+// --- Conditional Invitation Filter Rule FIX ---
 function listenForServersList() {
     if (unsubscribeServers) unsubscribeServers();
-    unsubscribeServers = onSnapshot(collection(db, "servers"), (snap) => {
+    if (!currentUser) return;
+    
+    const mySanitizedFilter = currentUser.email.toLowerCase().replace(/[@.]/g, '_');
+    
+    // Filters servers collection directly to records matching user's whitelist visibility rules
+    const serverQuery = query(
+        collection(db, "servers"), 
+        where(`allowedMembers.${mySanitizedFilter}`, "==", true)
+    );
+    
+    unsubscribeServers = onSnapshot(serverQuery, (snap) => {
         if (!serversList) return;
         serversList.innerHTML = '';
         snap.forEach((docSnap) => {
@@ -544,25 +585,7 @@ function highlightSidebarBtn(activeButton) {
     if (activeButton) activeButton.style.background = '#4f545c';
 }
 
-function switchChannel(mode, id) {
-    currentChatMode = mode;
-    activeServerId = id;
-    if (serverAdminIndicator) serverAdminIndicator.textContent = "";
-    if (giphyDrawer) giphyDrawer.classList.add('hidden');
-    if (mode === "public") {
-        currentRoomTitle.textContent = "Global Chat";
-    } else if (mode === "server") {
-        const sData = serverCache[id] || {};
-        currentRoomTitle.textContent = `Server: ${sData.name || 'Group'}`;
-        if (serverAdminIndicator) serverAdminIndicator.textContent = `👑 Owner: ${sData.owner.split('@')[0]}`;
-    } else {
-        const targetUser = userCache[id] || {};
-        currentRoomTitle.textContent = `${targetUser.displayName || id}`;
-    }
-    loadMessages();
-}
-
-// --- api.video Submission Handling Pipeline ---
+// --- api.video Submission Handling FIX ---
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -585,13 +608,18 @@ if (chatForm) {
 
                     const accessToken = await getApiVideoToken();
 
+                    // FIX: Explicitly enforce mp4Support property flags to allow basic video player elements
                     const containerResponse = await fetch(`${API_VIDEO_BASE}/videos`, {
                         method: "POST",
                         headers: {
                             "Authorization": `Bearer ${accessToken}`,
                             "Content-Type": "application/json"
                         },
-                        body: JSON.stringify({ title: `Chat Upload - ${Date.now()}`, public: true })
+                        body: JSON.stringify({ 
+                            title: `Chat Upload - ${Date.now()}`, 
+                            public: true,
+                            mp4Support: true 
+                        })
                     });
                     if (!containerResponse.ok) throw new Error("Could not register api.video container shell.");
                     const videoContainer = await containerResponse.json();
@@ -608,10 +636,9 @@ if (chatForm) {
                     if (!uploadResponse.ok) throw new Error("Binary transfer to api.video failed.");
                     const uploadResult = await uploadResponse.json();
 
-                    finalUrl = uploadResult.assets.mp4 || uploadResult.assets.player; 
+                    // FIX: Access explicit progressive playback properties safely
+                    finalUrl = uploadResult.assets.mp4 || uploadResult.assets.player || `https://sandbox.api.video/vod/${videoId}/mp4/source.mp4`; 
                     fileType = 'video';
-                    
-                    switchChannel(currentChatMode, activeServerId);
                 }
             }
 
@@ -639,9 +666,28 @@ if (chatForm) {
         } catch (err) { 
             console.error(err);
             alert("Video upload process encountered an error: " + err.message);
+        } finally {
             switchChannel(currentChatMode, activeServerId);
         }
     });
+}
+
+function switchChannel(mode, id) {
+    currentChatMode = mode;
+    activeServerId = id;
+    if (serverAdminIndicator) serverAdminIndicator.textContent = "";
+    if (giphyDrawer) giphyDrawer.classList.add('hidden');
+    if (mode === "public") {
+        currentRoomTitle.textContent = "Global Chat";
+    } else if (mode === "server") {
+        const sData = serverCache[id] || {};
+        currentRoomTitle.textContent = `Server: ${sData.name || 'Group'}`;
+        if (serverAdminIndicator) serverAdminIndicator.textContent = `👑 Owner: ${sData.owner.split('@')[0]}`;
+    } else {
+        const targetUser = userCache[id] || {};
+        currentRoomTitle.textContent = `${targetUser.displayName || id}`;
+    }
+    loadMessages();
 }
 
 function loadMessages() {
@@ -689,7 +735,7 @@ function loadMessages() {
                     mediaMarkup = `
                         <div style="margin-top: 5px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); max-width: 300px;">
                             <a href="${data.fileUrl}" target="_blank" style="color: #00b0f4; font-size: 12px; text-decoration: underline; display: block; margin-bottom: 6px; word-break: break-all;">🔗 View Video File (${data.fileUrl.substring(0, 30)}...)</a>
-                            <video src="${data.fileUrl}" style="max-width:100%; border-radius:4px; background:#000;" controls></video>
+                            <video src="${data.fileUrl}" style="max-width:100%; border-radius:4px; background:#000;" controls playsinline></video>
                         </div>
                     `;
                 } else if (data.fileType === 'giphy') {
@@ -731,7 +777,6 @@ function loadMessages() {
             chatMessages.appendChild(messageEl);
         });
 
-        // Trigger dynamic alert with navigation payload parameters
         if (initialLoadComplete && lastIncomingMessage) {
             addAlertNotification(
                 lastIncomingMessage.displayName || lastIncomingMessage.user, 
