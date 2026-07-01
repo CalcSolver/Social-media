@@ -16,13 +16,17 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// GIPHY Engine Configuration
-const GIPHY_API_KEY = "dc6zaTOxFJmzC"; // Public beta key
+// Cloudinary Asset Engine Keys
+const CLOUD_NAME = "ddvsercvm";
+const UPLOAD_PRESET = "my_preset";
+
+// GIPHY Engine Keys
+const GIPHY_API_KEY = "dc6zaTOxFJmzC"; 
 const giphyToggleBtn = document.getElementById('giphy-toggle-btn');
 const giphyDrawer = document.getElementById('giphy-drawer');
 const giphyResultsContainer = document.getElementById('giphy-results-container');
 
-// Target Nodes
+// Core Nodes
 const targetPublicBtn = document.getElementById('target-public');
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
@@ -42,6 +46,7 @@ const myDisplayName = document.getElementById('my-displayName');
 const currentRoomTitle = document.getElementById('current-room-title');
 const serverAdminIndicator = document.getElementById('server-admin-indicator');
 const usersList = document.getElementById('users-list');
+const friendsList = document.getElementById('friends-list');
 const serversList = document.getElementById('servers-list');
 const newServerInput = document.getElementById('new-server-input');
 const createServerBtn = document.getElementById('create-server-btn');
@@ -53,7 +58,16 @@ const settingsForm = document.getElementById('settings-form');
 const settingsNameInput = document.getElementById('settings-name-input');
 const settingsAvatarInput = document.getElementById('settings-avatar-input');
 
-// Call / FaceTime Nodes
+// Target Profile Popup Modal Nodes
+const profileModal = document.getElementById('profile-modal');
+const closeProfileModal = document.getElementById('close-profile-modal');
+const viewProfileAvatar = document.getElementById('view-profile-avatar');
+const viewProfileName = document.getElementById('view-profile-name');
+const viewProfileEmail = document.getElementById('view-profile-email');
+const dmStartBtn = document.getElementById('dm-start-btn');
+const addFriendBtn = document.getElementById('add-friend-btn');
+
+// Video Call Nodes
 const callBtn = document.getElementById('call-btn');
 const videoCallModal = document.getElementById('video-call-modal');
 const endCallBtn = document.getElementById('end-call-btn');
@@ -66,13 +80,14 @@ const notiDropdown = document.getElementById('noti-dropdown');
 const notiList = document.getElementById('noti-list');
 const disappearToggleBtn = document.getElementById('disappear-toggle-btn');
 
-let isSignUpMode = false;
 let currentUser = null;
 let currentChatMode = "public"; 
 let activeServerId = null;
+let targetSelectedProfileEmail = null; 
 let unsubscribeChat = null;
 let unsubscribePresence = null;
 let unsubscribeServers = null;
+let unsubscribeFriends = null;
 let giphySearchTimeout = null;
 let unreadNotificationsCount = 0;
 let disappearModeActive = false;
@@ -85,7 +100,51 @@ const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const serverCache = {};
 
-// --- Profile Icon Logic Execution ---
+// --- Interactive Profile Click Inspector Logic ---
+function launchUserProfileInspector(targetEmail) {
+    const data = userCache[targetEmail.toLowerCase()] || {};
+    targetSelectedProfileEmail = targetEmail.toLowerCase();
+    
+    if (viewProfileName) viewProfileName.textContent = data.displayName || targetEmail.split('@')[0];
+    if (viewProfileAvatar) viewProfileAvatar.src = data.photoURL || defaultAvatar;
+    if (viewProfileEmail) viewProfileEmail.textContent = data.email || targetEmail;
+    
+    if (profileModal) profileModal.classList.remove('hidden');
+}
+
+if (closeProfileModal) {
+    closeProfileModal.addEventListener('click', () => {
+        if (profileModal) profileModal.classList.add('hidden');
+    });
+}
+
+if (dmStartBtn) {
+    dmStartBtn.addEventListener('click', () => {
+        if (!targetSelectedProfileEmail) return;
+        if (profileModal) profileModal.classList.add('hidden');
+        if (callBtn) callBtn.classList.remove('hidden'); 
+        switchChannel("dm", targetSelectedProfileEmail);
+    });
+}
+
+if (addFriendBtn) {
+    addFriendBtn.addEventListener('click', async () => {
+        if (!currentUser || !targetSelectedProfileEmail) return;
+        try {
+            const cleanUserEmail = currentUser.email.toLowerCase();
+            await setDoc(doc(db, "users", cleanUserEmail, "friends", targetSelectedProfileEmail), {
+                email: targetSelectedProfileEmail,
+                addedAt: serverTimestamp()
+            });
+            alert("Added to Friends list successfully!");
+            if (profileModal) profileModal.classList.add('hidden');
+        } catch (err) {
+            console.error(err);
+        }
+    });
+}
+
+// --- Local User Own Settings Setup ---
 if (myProfileDisplay) {
     myProfileDisplay.addEventListener('click', () => {
         if (!currentUser) return;
@@ -119,9 +178,7 @@ if (settingsForm) {
             if (myAvatar) myAvatar.src = newAvatarUrl;
             if (settingsModal) settingsModal.classList.add('hidden');
             alert("Profile successfully updated!");
-        } catch (err) {
-            alert(err.message);
-        }
+        } catch (err) { alert(err.message); }
     });
 }
 
@@ -130,7 +187,7 @@ if (giphyToggleBtn && giphyDrawer) {
     giphyToggleBtn.addEventListener('click', () => {
         giphyDrawer.classList.toggle('hidden');
         if (!giphyDrawer.classList.contains('hidden')) {
-            fetchGiphyMemes("memes"); // Pre-loads popular meme queries natively
+            fetchGiphyMemes("memes"); 
         }
     });
 }
@@ -174,9 +231,7 @@ async function fetchGiphyMemes(searchQuery) {
         } else {
             giphyResultsContainer.innerHTML = `<span style="color: #b9bbbe; font-size:11px; padding:5px;">No memes found...</span>`;
         }
-    } catch (err) {
-        console.error(err);
-    }
+    } catch (err) { console.error(err); }
 }
 
 async function executeDirectPostPayload(urlPath, assetType) {
@@ -202,9 +257,7 @@ async function executeDirectPostPayload(urlPath, assetType) {
             const combinedRoomId = getDMId(currentUser.email, activeServerId);
             await addDoc(collection(db, "direct_messages", combinedRoomId, "messages"), payload);
         }
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
 }
 
 // --- System Notification Tray & Core Loops ---
@@ -245,10 +298,7 @@ if (createServerBtn) {
         if (!name || !currentUser) return;
         const serverId = "srv_" + Date.now();
         await setDoc(doc(db, "servers", serverId), {
-            id: serverId,
-            name: name,
-            owner: currentUser.email.toLowerCase(),
-            created: serverTimestamp()
+            id: serverId, name: name, owner: currentUser.email.toLowerCase(), created: serverTimestamp()
         });
         newServerInput.value = '';
     });
@@ -269,12 +319,8 @@ function buildRealTimePeerConnection(userEmailCleaned) {
                 incomingCall.on('stream', (incomingStream) => {
                     if (remoteVideo) remoteVideo.srcObject = incomingStream;
                 });
-            } catch (err) {
-                alert("Device acquisition error.");
-            }
-        } else {
-            incomingCall.close();
-        }
+            } catch (err) { alert("Device acquisition error."); }
+        } else { incomingCall.close(); }
     });
 }
 
@@ -291,9 +337,7 @@ if (callBtn) {
             outboundCall.on('stream', (incomingStream) => {
                 if (remoteVideo) remoteVideo.srcObject = incomingStream;
             });
-        } catch (err) {
-            alert("Camera device access denied.");
-        }
+        } catch (err) { alert("Camera device access denied."); }
     });
 }
 
@@ -365,6 +409,7 @@ onAuthStateChanged(auth, async (user) => {
         if (targetPublicBtn) targetPublicBtn.click(); 
         listenForUserPresence();
         listenForServersList();
+        listenToMyFriendsDirectory();
     } else {
         currentUser = null;
         if (appContainer) appContainer.classList.add('hidden');
@@ -372,6 +417,7 @@ onAuthStateChanged(auth, async (user) => {
         if (unsubscribeChat) unsubscribeChat();
         if (unsubscribePresence) unsubscribePresence();
         if (unsubscribeServers) unsubscribeServers();
+        if (unsubscribeFriends) unsubscribeFriends();
     }
 });
 
@@ -415,14 +461,51 @@ function listenForUserPresence() {
                     <img src="${userData.photoURL || defaultAvatar}" style="width:24px; height:24px; border-radius:50%; object-fit:cover;"> 
                     <span>${userData.displayName || userData.email}</span>
                 `;
+                // Clicking triggers profile lookups natively
                 btn.addEventListener('click', () => {
-                    highlightSidebarBtn(btn);
-                    if (callBtn) callBtn.classList.remove('hidden'); 
-                    switchChannel("dm", userData.email.toLowerCase());
+                    launchUserProfileInspector(userData.email);
                 });
                 usersList.appendChild(btn);
             }
         });
+    });
+}
+
+// --- Live Friends List Synchronizer Engine ---
+function listenToMyFriendsDirectory() {
+    if (unsubscribeFriends) unsubscribeFriends();
+    const cleanEmail = currentUser.email.toLowerCase();
+    
+    unsubscribeFriends = onSnapshot(collection(db, "users", cleanEmail, "friends"), (snap) => {
+        if (!friendsList) return;
+        friendsList.innerHTML = '';
+        
+        snap.forEach((docSnap) => {
+            const fEmail = docSnap.id;
+            const friendData = userCache[fEmail] || { displayName: fEmail.split('@')[0], photoURL: defaultAvatar, online: false };
+            
+            const btn = document.createElement('button');
+            btn.className = 'target-btn';
+            btn.style = "width: 100%; padding: 6px; background: rgba(88,101,242,0.1); border: 1px solid rgba(88,101,242,0.2); color: #fff; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 4px;";
+            const statusColor = friendData.online ? '#3ba55d' : '#747f8d';
+            
+            btn.innerHTML = `
+                <span style="width:6px; height:6px; background:${statusColor}; border-radius:50%; display:inline-block;"></span>
+                <img src="${friendData.photoURL || defaultAvatar}" style="width:20px; height:20px; border-radius:50%; object-fit:cover;"> 
+                <span style="font-size:12px; font-weight:500;">${friendData.displayName}</span>
+            `;
+            
+            btn.addEventListener('click', () => {
+                highlightSidebarBtn(btn);
+                if (callBtn) callBtn.classList.remove('hidden'); 
+                switchChannel("dm", fEmail);
+            });
+            friendsList.appendChild(btn);
+        });
+        
+        if(friendsList.innerHTML === '') {
+            friendsList.innerHTML = `<span style="color:#747f8d; font-size:11px; padding:5px;">No friends added yet</span>`;
+        }
     });
 }
 
@@ -443,12 +526,13 @@ function switchChannel(mode, id) {
         currentRoomTitle.textContent = `Server: ${sData.name || 'Group'}`;
         if (serverAdminIndicator) serverAdminIndicator.textContent = `👑 Owner: ${sData.owner.split('@')[0]}`;
     } else {
-        currentRoomTitle.textContent = `DM: ${id}`;
+        const targetUser = userCache[id] || {};
+        currentRoomTitle.textContent = `${targetUser.displayName || id}`;
     }
     loadMessages();
 }
 
-// --- Native Message Pipeline Handling (Supports text, image strings, and inline web-rendered videos) ---
+// --- Cloudinary Native Message Pipeline Handling ---
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -461,17 +545,29 @@ if (chatForm) {
             let fileType = null;
             
             if (file) {
-                // If sharing an image or sharing a native video container
                 if (file.type.startsWith('image/')) {
                     finalUrl = await new Promise((res) => {
                         const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file);
                     });
                     fileType = 'image';
                 } else if (file.type.startsWith('video/')) {
-                    finalUrl = await new Promise((res) => {
-                        const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file);
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    formData.append("upload_preset", UPLOAD_PRESET);
+
+                    currentRoomTitle.textContent = "Uploading video payload... ⏳";
+
+                    const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
+                        method: "POST",
+                        body: formData
                     });
+
+                    if (!response.ok) throw new Error("Cloudinary rejected structural request.");
+                    
+                    const data = await response.json();
+                    finalUrl = data.secure_url; 
                     fileType = 'video';
+                    switchChannel(currentChatMode, activeServerId);
                 }
             }
 
@@ -496,7 +592,10 @@ if (chatForm) {
             }
             chatForm.reset();
             mediaInput.value = "";
-        } catch (err) { console.error(err); }
+        } catch (err) { 
+            console.error(err);
+            switchChannel(currentChatMode, activeServerId);
+        }
     });
 }
 
@@ -536,7 +635,6 @@ function loadMessages() {
             
             let mediaMarkup = '';
             if (data.fileUrl) {
-                // Renders the file inside a video element player or image standard format safely
                 mediaMarkup = data.fileType === 'video'
                     ? `<video src="${data.fileUrl}" style="max-width:280px; border-radius:6px; background:#000;" controls></video>`
                     : `<img src="${data.fileUrl}" style="max-width:250px; border-radius:6px;">`;
@@ -547,16 +645,23 @@ function loadMessages() {
             const cachedUser = userCache[data.user.toLowerCase()] || {};
 
             messageEl.innerHTML = `
-                <img src="${cachedUser.photoURL || defaultAvatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
+                <img class="msg-avatar-click" src="${cachedUser.photoURL || defaultAvatar}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; cursor:pointer;">
                 <div style="flex:1;">
                     <div style="display:flex; justify-content:space-between;">
-                        <strong style="color:#fff; font-size:13px;">${cachedUser.displayName || data.displayName || data.user}</strong>
+                        <strong class="msg-username-click" style="color:#fff; font-size:13px; cursor:pointer;">${cachedUser.displayName || data.displayName || data.user}</strong>
                         ${actionControlsMarkup}
                     </div>
                     <div style="color:#dcddde; font-size:14px; margin-top:2px;">${escapeHTML(data.text || '')}</div>
                     ${mediaMarkup}
                 </div>
             `;
+            
+            // Allows viewing profile by clicking on profile icons inside chat threads
+            const avatarClick = messageEl.querySelector('.msg-avatar-click');
+            const userClick = messageEl.querySelector('.msg-username-click');
+            if (avatarClick) avatarClick.addEventListener('click', () => launchUserProfileInspector(data.user));
+            if (userClick) userClick.addEventListener('click', () => launchUserProfileInspector(data.user));
+
             if (isSentByMe) {
                 const delBtn = messageEl.querySelector('.delete-trigger');
                 if (delBtn) delBtn.addEventListener('click', () => handleModifyMessage(msgId, 'delete', baseColl, subRoom));
