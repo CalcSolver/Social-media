@@ -33,7 +33,7 @@ const mediaInput = document.getElementById('media-input');
 const chatMessages = document.getElementById('chat-messages');
 const myProfileDisplay = document.getElementById('my-profile-display');
 const myAvatar = document.getElementById('my-avatar');
-const myDisplayName = document.getElementById('my-displayName') || document.getElementById('my-display-name');
+const myDisplayName = document.getElementById('my-displayName');
 const currentRoomTitle = document.getElementById('current-room-title');
 const usersList = document.getElementById('users-list');
 const searchUserInput = document.getElementById('search-user-input');
@@ -47,6 +47,15 @@ const videoCallModal = document.getElementById('video-call-modal');
 const endCallBtn = document.getElementById('end-call-btn');
 const localVideo = document.getElementById('local-video');
 const remoteVideo = document.getElementById('remote-video');
+
+// Notification UI Nodes
+const notiToggleBtn = document.getElementById('noti-toggle-btn');
+const notiBadge = document.getElementById('noti-badge');
+const notiDropdown = document.getElementById('noti-dropdown');
+const notiList = document.getElementById('noti-list');
+
+// Disappearing Settings Node
+const disappearToggleBtn = document.getElementById('disappear-toggle-btn');
 
 // Admin Elements
 const adminMonitorPanel = document.getElementById('admin-monitor-panel');
@@ -75,6 +84,8 @@ let adminSpyRoomId = null;
 let unsubscribeChat = null;
 let unsubscribePresence = null;
 let typingTimeout = null;
+let unreadNotificationsCount = 0;
+let disappearModeActive = false; // Self-destruct chat status tracking link
 
 let myPeerInstance = null;
 let currentMediaConnection = null;
@@ -83,6 +94,96 @@ let localMediaStream = null;
 const defaultAvatar = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 const userCache = {};
 const ADMIN_EMAIL = "hjass2865@gmail.com";
+
+// Audio Synth Generation Engine (No static audio assets required!)
+function playNotificationSound(type = 'message') {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        if (type === 'call') {
+            // High-low FaceTime alert sound
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, ctx.currentTime);
+            osc.frequency.setValueAtTime(800, ctx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.3);
+        } else {
+            // Clean interface pop for standard messages
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5 Node
+            gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.15);
+        }
+    } catch (e) {
+        console.warn("Audio Context playback stalled by user interaction restriction parameters.");
+    }
+}
+
+// Notification Management Component
+function addAlertNotification(titleText, bodyText) {
+    playNotificationSound('message');
+    unreadNotificationsCount++;
+    if (notiBadge) {
+        notiBadge.textContent = unreadNotificationsCount;
+        notiBadge.style.display = "inline-block";
+    }
+    
+    const alertRow = document.createElement('div');
+    alertRow.style = "padding: 8px; border-bottom: 1px solid #444; color: #fff; font-size: 12px; text-align: left;";
+    alertRow.innerHTML = `<strong>${escapeHTML(titleText)}</strong><br><span style="color:#b9bbbe;">${escapeHTML(bodyText)}</span>`;
+    
+    if (notiList.textContent === "No new notifications") {
+        notiList.innerHTML = "";
+    }
+    notiList.insertBefore(alertRow, notiList.firstChild);
+}
+
+if (notiToggleBtn) {
+    notiToggleBtn.addEventListener('click', () => {
+        if (notiDropdown) {
+            notiDropdown.classList.toggle('hidden');
+            unreadNotificationsCount = 0;
+            if (notiBadge) notiBadge.style.display = "none";
+        }
+    });
+}
+
+// Self-Destruct Switch Toggle Handler
+if (disappearToggleBtn) {
+    disappearToggleBtn.addEventListener('click', () => {
+        disappearModeActive = !disappearModeActive;
+        if (disappearModeActive) {
+            disappearToggleBtn.textContent = "⏱️ Poof: 10s Active";
+            disappearToggleBtn.style.background = "#f57731";
+        } else {
+            disappearToggleBtn.textContent = "⏱️ Poof: OFF";
+            disappearToggleBtn.style.background = "#4f545c";
+        }
+    });
+}
+
+// Rate-Limiting Check: 100 Messages Per Day Throttle Check
+function verifyMessageRateLimit() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const storageKey = `msg_quota_${todayStr}`;
+    let currentCount = parseInt(localStorage.getItem(storageKey) || "0", 10);
+    
+    if (currentCount >= 100) {
+        alert("You have reached your limit of 100 messages for today.");
+        return false;
+    }
+    
+    localStorage.setItem(storageKey, (currentCount + 1).toString());
+    return true;
+}
 
 async function uploadToCloudinary(fileObj) {
     if (!fileObj) return null;
@@ -107,12 +208,16 @@ async function uploadToCloudinary(fileObj) {
     }
 }
 
+// PeerJS Initialization Function (FIXED: Complete stream exchange pipelines)
 function buildRealTimePeerConnection(userEmailCleaned) {
     if (myPeerInstance) return;
     myPeerInstance = new Peer(userEmailCleaned);
 
     myPeerInstance.on('call', async (incomingCall) => {
-        if (confirm(`Incoming video call from another participant. Answer?`)) {
+        playNotificationSound('call');
+        addAlertNotification("Incoming Call", "Someone is calling your device...");
+        
+        if (confirm(`Incoming FaceTime request. Answer?`)) {
             try {
                 localMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 if (localVideo) localVideo.srcObject = localMediaStream;
@@ -121,11 +226,15 @@ function buildRealTimePeerConnection(userEmailCleaned) {
                 incomingCall.answer(localMediaStream);
                 currentMediaConnection = incomingCall;
 
+                // FIXED: Catch the external inbound camera stream accurately
                 incomingCall.on('stream', (incomingStream) => {
-                    if (remoteVideo) remoteVideo.srcObject = incomingStream;
+                    if (remoteVideo) {
+                        remoteVideo.srcObject = incomingStream;
+                        remoteVideo.play().catch(e => console.log("Autoplay block bypassed"));
+                    }
                 });
             } catch (err) {
-                alert("Could not access camera/microphone metadata setup.");
+                alert("Could not open video camera stream hardware.");
             }
         } else {
             incomingCall.close();
@@ -146,11 +255,15 @@ if (callBtn) {
             const outboundCall = myPeerInstance.call(cleaningTarget, localMediaStream);
             currentMediaConnection = outboundCall;
 
+            // FIXED: Catch remote stream when outbound dial bridges effectively
             outboundCall.on('stream', (incomingStream) => {
-                if (remoteVideo) remoteVideo.srcObject = incomingStream;
+                if (remoteVideo) {
+                    remoteVideo.srcObject = incomingStream;
+                    remoteVideo.play().catch(e => console.log("Autoplay block bypassed"));
+                }
             });
         } catch (err) {
-            alert("Camera initialization blocked.");
+            alert("Camera device access denied.");
         }
     });
 }
@@ -196,7 +309,6 @@ if (toggleLink) {
     });
 }
 
-// CRITICAL ATTACHMENT PROTECTION: Standardized auth handling
 if (authForm) {
     authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -453,6 +565,10 @@ if (mediaInput) {
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        
+        // Rate Limiter Enforcement
+        if (!verifyMessageRateLimit()) return;
+
         const text = messageInput.value.trim();
         const file = mediaInput.files[0];
         if (!text && !file) return;
@@ -488,6 +604,7 @@ if (chatForm) {
                 userAvatar: myData.photoURL || defaultAvatar,
                 timestamp: serverTimestamp(),
                 reactions: { "🔥": 0, "💀": 0, "👍": 0 },
+                disappearing: disappearModeActive, // Flags the message to trigger self-destruction evaluation
                 ...(finalUrl && { fileUrl: finalUrl, fileType: fileType })
             };
 
@@ -512,7 +629,7 @@ if (chatForm) {
 async function handleModifyMessage(msgId, action, collectionPath, subId = null) {
     let targetRef = subId ? doc(db, collectionPath, subId, "messages", msgId) : doc(db, collectionPath, msgId);
     if (action === 'delete') {
-        if (confirm("Delete this message?")) await deleteDoc(targetRef);
+        await deleteDoc(targetRef);
     }
 }
 
@@ -535,11 +652,36 @@ function loadMessages() {
         q = query(collection(db, "direct_messages", subRoom, "messages"), orderBy("timestamp", "asc"));
     }
 
+    let initialLoadComplete = false;
+
     unsubscribeChat = onSnapshot(q, (snapshot) => {
         chatMessages.innerHTML = '';
+        
+        let newMessagesDetected = false;
+
         snapshot.forEach((docSnap) => {
             const data = docSnap.data();
             const msgId = docSnap.id;
+            
+            // Self-Destruct Engine: If flagged disappear post has lived for > 10 seconds, drop it
+            if (data.disappearing && data.timestamp) {
+                const msgTime = data.timestamp.toDate().getTime();
+                const nowTime = Date.now();
+                if (nowTime - msgTime > 10000) {
+                    handleModifyMessage(msgId, 'delete', baseColl, subRoom);
+                    return; 
+                } else {
+                    // Schedule local DOM removal backup trigger
+                    setTimeout(() => {
+                        handleModifyMessage(msgId, 'delete', baseColl, subRoom);
+                    }, 10000 - (nowTime - msgTime));
+                }
+            }
+
+            if (initialLoadComplete && data.user !== currentUser.email.toLowerCase()) {
+                newMessagesDetected = true;
+            }
+
             const messageEl = document.createElement('div');
             const isSentByMe = data.user === currentUser.email.toLowerCase();
             const isLoggedAsAdmin = currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
@@ -551,22 +693,22 @@ function loadMessages() {
             if (data.fileUrl) {
                 const isVideo = data.fileType === 'video' || data.fileUrl.match(/\.(mp4|webm|ogg|mov)$/i);
                 mediaMarkup = isVideo 
-                    ? `<video src="${data.fileUrl}" class="media-attachment" controls></video>`
-                    : `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Asset Link">`;
+                    ? `<video src="${data.fileUrl}" class="media-attachment" controls style="max-width:250px; border-radius:4px; margin-top:5px;"></video>`
+                    : `<img src="${data.fileUrl}" class="media-attachment" alt="Embedded Asset Link" style="max-width:250px; border-radius:4px; margin-top:5px;">`;
             }
 
             const rx = data.reactions || { "🔥": 0, "💀": 0, "👍": 0 };
             const reactionMarkup = `
-                <div class="reactions-row">
-                    <span class="reaction-chip react-trigger" data-emoji="🔥" data-id="${msgId}">🔥 ${rx["🔥"] || 0}</span>
-                    <span class="reaction-chip react-trigger" data-emoji="💀" data-id="${msgId}">💀 ${rx["💀"] || 0}</span>
-                    <span class="reaction-chip react-trigger" data-emoji="👍" data-id="${msgId}">👍 ${rx["👍"] || 0}</span>
+                <div class="reactions-row" style="display:flex; gap:5px; margin-top:4px;">
+                    <span class="reaction-chip react-trigger" data-emoji="🔥" data-id="${msgId}" style="cursor:pointer; background:#2f3136; padding:2px 6px; border-radius:4px; font-size:12px;">🔥 ${rx["🔥"] || 0}</span>
+                    <span class="reaction-chip react-trigger" data-emoji="💀" data-id="${msgId}" style="cursor:pointer; background:#2f3136; padding:2px 6px; border-radius:4px; font-size:12px;">💀 ${rx["💀"] || 0}</span>
+                    <span class="reaction-chip react-trigger" data-emoji="👍" data-id="${msgId}" style="cursor:pointer; background:#2f3136; padding:2px 6px; border-radius:4px; font-size:12px;">👍 ${rx["👍"] || 0}</span>
                 </div>
             `;
 
             const actionControlsMarkup = (isSentByMe || isLoggedAsAdmin) ? `
                 <span class="msg-actions">
-                    <button class="action-btn del delete-trigger" data-id="${msgId}">❌</button>
+                    <button class="action-btn del delete-trigger" data-id="${msgId}" style="background:none; border:none; cursor:pointer;">❌</button>
                 </span>
             ` : '';
 
@@ -575,13 +717,13 @@ function loadMessages() {
             const finalAvatar = cachedUser.photoURL || data.userAvatar || defaultAvatar;
 
             messageEl.innerHTML = `
-                <img src="${finalAvatar}" class="avatar-sm" style="width:36px; height:36px; border-radius:50%; margin-top:3px;">
+                <img src="${finalAvatar}" class="avatar-sm" style="width:36px; height:36px; border-radius:50%; margin-top:3px; object-fit:cover;">
                 <div style="flex:1;">
                     <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <strong style="color:#fff;">${finalName}</strong>
+                        <strong style="color:#fff; font-size:14px;">${finalName} ${data.disappearing ? '<span style="color:#f57731; font-size:11px;">⏱️ (Disappearing)</span>' : ''}</strong>
                         ${actionControlsMarkup}
                     </div>
-                    <div style="margin-top:2px; color:#dcddde; word-break: break-word;">${escapeHTML(data.text || '')}</div>
+                    <div style="margin-top:2px; color:#dcddde; font-size:14px; word-break: break-word;">${escapeHTML(data.text || '')}</div>
                     ${mediaMarkup}
                     ${reactionMarkup}
                 </div>
@@ -604,6 +746,12 @@ function loadMessages() {
 
             chatMessages.appendChild(messageEl);
         });
+
+        if (initialLoadComplete && newMessagesDetected) {
+            addAlertNotification("New Message", "A participant posted in your active channel log view.");
+        }
+        
+        initialLoadComplete = true;
         chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 }
