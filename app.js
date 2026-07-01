@@ -52,7 +52,7 @@ const settingsModal = document.getElementById('settings-modal');
 const closeSettingsModal = document.getElementById('close-settings-modal');
 const settingsForm = document.getElementById('settings-form');
 const settingsNameInput = document.getElementById('settings-name-input');
-const settingsAvatarInput = document.getElementById('settings-avatar-input');
+const settingsAvatarInput = document.getElementById('settings-avatar-input'); // Handles file uploads
 
 // Target Profile Popup Modal Nodes
 const profileModal = document.getElementById('profile-modal');
@@ -158,13 +158,13 @@ if (dmStartBtn) {
     });
 }
 
-// --- Local User Own Settings Setup ---
+// --- Local User Settings Form Setup (Optimized Base64 System) ---
 if (myProfileDisplay) {
     myProfileDisplay.addEventListener('click', () => {
         if (!currentUser) return;
         const cached = userCache[currentUser.email.toLowerCase()] || {};
         if (settingsNameInput) settingsNameInput.value = cached.displayName || currentUser.email.split('@')[0];
-        if (settingsAvatarInput) settingsAvatarInput.value = cached.photoURL || "";
+        if (settingsAvatarInput) settingsAvatarInput.value = ""; // Reset local upload file state
         if (settingsModal) settingsModal.classList.remove('hidden');
     });
 }
@@ -179,20 +179,42 @@ if (settingsForm) {
     settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const newName = settingsNameInput.value.trim();
-        const newAvatarUrl = settingsAvatarInput.value.trim() || defaultAvatar;
+        const avatarFile = settingsAvatarInput.files[0]; // Access local file buffer
         const cleanedEmail = currentUser.email.toLowerCase();
 
         try {
-            await updateProfile(auth.currentUser, { displayName: newName, photoURL: newAvatarUrl });
+            let finalAvatarUrl = userCache[cleanedEmail]?.photoURL || defaultAvatar;
+
+            // If a local image file is added, read it into a high-density Base64 string text packet
+            if (avatarFile) {
+                currentRoomTitle.textContent = "Processing and encoding avatar string... ⚙️";
+                
+                finalAvatarUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = (err) => reject(err);
+                    reader.readAsDataURL(avatarFile);
+                });
+            }
+
+            // Sync structural identifiers straight to Firebase
+            await updateProfile(auth.currentUser, { displayName: newName, photoURL: finalAvatarUrl });
             await updateDoc(doc(db, "users", cleanedEmail), {
                 displayName: newName,
-                photoURL: newAvatarUrl
+                photoURL: finalAvatarUrl
             });
+            
             if (myDisplayName) myDisplayName.textContent = newName;
-            if (myAvatar) myAvatar.src = newAvatarUrl;
+            if (myAvatar) myAvatar.src = finalAvatarUrl;
             if (settingsModal) settingsModal.classList.add('hidden');
-            alert("Profile successfully updated!");
-        } catch (err) { alert(err.message); }
+            
+            alert("Profile successfully updated with local string encoding!");
+        } catch (err) { 
+            console.error(err);
+            alert("Profile update failure: " + err.message); 
+        } finally {
+            switchChannel(currentChatMode, activeServerId);
+        }
     });
 }
 
@@ -560,7 +582,7 @@ function highlightSidebarBtn(activeButton) {
     if (activeButton) activeButton.style.background = '#4f545c';
 }
 
-// --- Live Cloudinary Global Media Engine ---
+// --- Live Cloudinary Media Stream Engine (Hybrid Filtering Architecture) ---
 if (chatForm) {
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -573,32 +595,43 @@ if (chatForm) {
             let fileType = null;
             
             if (file) {
-                currentRoomTitle.textContent = "Broadcasting media to global web cloud... 🌐";
                 fileType = file.type.startsWith('video/') ? 'video' : 'image';
-                
-                // Active Cloudinary Parameters
-                const YOUR_CLOUD_NAME = "ddvsercvm"; 
-                const YOUR_UNSIGNED_PRESET = "chat_preset";
-                
-                // Dynamic routing depending on media format payload type
-                const targetEndpoint = `https://api.cloudinary.com/v1_1/${YOUR_CLOUD_NAME}/${fileType}/upload`;
-                
-                const formData = new FormData();
-                formData.append("file", file);
-                formData.append("upload_preset", YOUR_UNSIGNED_PRESET);
-                
-                const response = await fetch(targetEndpoint, {
-                    method: "POST",
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error?.message || "Cloudinary upload rejected.");
+
+                // OPTIMIZED ACTION: If it's a small standard image, process it locally as Base64 text string
+                if (fileType === 'image') {
+                    currentRoomTitle.textContent = "Compressing local text image string... 🗜️";
+                    finalUrl = await new Promise((resolve, reject) => {
+                        const r = new FileReader();
+                        r.onload = () => resolve(r.result);
+                        r.onerror = (err) => reject(err);
+                        r.readAsDataURL(file);
+                    });
+                } else {
+                    // LARGE MEDIA ACTION: Route videos straight into your Cloudinary engine bucket
+                    currentRoomTitle.textContent = "Broadcasting video straight to global web cloud... 🌐";
+                    
+                    const YOUR_CLOUD_NAME = "ddvsercvm"; 
+                    const YOUR_UNSIGNED_PRESET = "chat_preset";
+                    
+                    const targetEndpoint = `https://api.cloudinary.com/v1_1/${YOUR_CLOUD_NAME}/video/upload`;
+                    
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    formData.append("upload_preset", YOUR_UNSIGNED_PRESET);
+                    
+                    const response = await fetch(targetEndpoint, {
+                        method: "POST",
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error?.message || "Cloudinary upload rejected.");
+                    }
+                    
+                    const data = await response.json();
+                    finalUrl = data.secure_url;
                 }
-                
-                const data = await response.json();
-                finalUrl = data.secure_url;
             }
 
             const myData = userCache[currentUser.email.toLowerCase()] || {};
