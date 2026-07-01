@@ -138,9 +138,7 @@ if (addFriendBtn) {
             });
             alert("Added to Friends list successfully!");
             if (profileModal) profileModal.classList.add('hidden');
-        } catch (err) {
-            console.error(err);
-        }
+        } catch (err) { console.error(err); }
     });
 }
 
@@ -182,7 +180,7 @@ if (settingsForm) {
     });
 }
 
-// --- GIPHY Meme Implementation Engine ---
+// --- GIPHY Iframe Implementation Engine ---
 if (giphyToggleBtn && giphyDrawer) {
     giphyToggleBtn.addEventListener('click', () => {
         giphyDrawer.classList.toggle('hidden');
@@ -214,15 +212,16 @@ async function fetchGiphyMemes(searchQuery) {
         giphyResultsContainer.innerHTML = "";
         if (json.data && json.data.length > 0) {
             json.data.forEach(gifObj => {
-                const gifUrl = gifObj.images.fixed_height_small.url;
-                const originalUrl = gifObj.images.original.url;
+                const gifId = gifObj.id;
+                const previewImgUrl = gifObj.images.fixed_height_small.url;
                 
                 const img = document.createElement('img');
-                img.src = gifUrl;
+                img.src = previewImgUrl;
                 img.style = "height: 80px; border-radius: 4px; cursor: pointer; border: 1px solid #444; min-width: 80px; object-fit: cover;";
                 
                 img.addEventListener('click', () => {
-                    executeDirectPostPayload(originalUrl, 'image');
+                    // Send using structural frame type identification
+                    executeDirectPostPayload(gifId, 'giphy');
                     giphyDrawer.classList.add('hidden');
                     if (messageInput) messageInput.value = "";
                 });
@@ -461,7 +460,6 @@ function listenForUserPresence() {
                     <img src="${userData.photoURL || defaultAvatar}" style="width:24px; height:24px; border-radius:50%; object-fit:cover;"> 
                     <span>${userData.displayName || userData.email}</span>
                 `;
-                // Clicking triggers profile lookups natively
                 btn.addEventListener('click', () => {
                     launchUserProfileInspector(userData.email);
                 });
@@ -471,7 +469,6 @@ function listenForUserPresence() {
     });
 }
 
-// --- Live Friends List Synchronizer Engine ---
 function listenToMyFriendsDirectory() {
     if (unsubscribeFriends) unsubscribeFriends();
     const cleanEmail = currentUser.email.toLowerCase();
@@ -562,7 +559,7 @@ if (chatForm) {
                         body: formData
                     });
 
-                    if (!response.ok) throw new Error("Cloudinary rejected structural request.");
+                    if (!response.ok) throw new Error("Cloudinary upload failed.");
                     
                     const data = await response.json();
                     finalUrl = data.secure_url; 
@@ -635,9 +632,24 @@ function loadMessages() {
             
             let mediaMarkup = '';
             if (data.fileUrl) {
-                mediaMarkup = data.fileType === 'video'
-                    ? `<video src="${data.fileUrl}" style="max-width:280px; border-radius:6px; background:#000;" controls></video>`
-                    : `<img src="${data.fileUrl}" style="max-width:250px; border-radius:6px;">`;
+                if (data.fileType === 'video') {
+                    // Display BOTH a clickable plain link and a video element component block
+                    mediaMarkup = `
+                        <div style="margin-top: 5px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); max-width: 300px;">
+                            <a href="${data.fileUrl}" target="_blank" style="color: #00b0f4; font-size: 12px; text-decoration: underline; display: block; margin-bottom: 6px; word-break: break-all;">🔗 View Video File (${data.fileUrl.substring(0, 30)}...)</a>
+                            <video src="${data.fileUrl}" style="max-width:100%; border-radius:4px; background:#000;" controls></video>
+                        </div>
+                    `;
+                } else if (data.fileType === 'giphy') {
+                    // Safe sandboxed Iframe rendering layer for internal GIPHY embeds
+                    mediaMarkup = `
+                        <div style="margin-top: 5px; max-width: 280px; aspect-ratio: 1; border-radius: 6px; overflow: hidden;">
+                            <iframe src="https://giphy.com/embed/${data.fileUrl}" width="100%" height="100%" frameBorder="0" class="giphy-embed" style="pointer-events: auto;" allowFullScreen></iframe>
+                        </div>
+                    `;
+                } else {
+                    mediaMarkup = `<img src="${data.fileUrl}" style="max-width:250px; border-radius:6px; margin-top:5px;">`;
+                }
             }
 
             const isSentByMe = data.user === currentUser.email.toLowerCase();
@@ -656,7 +668,6 @@ function loadMessages() {
                 </div>
             `;
             
-            // Allows viewing profile by clicking on profile icons inside chat threads
             const avatarClick = messageEl.querySelector('.msg-avatar-click');
             const userClick = messageEl.querySelector('.msg-username-click');
             if (avatarClick) avatarClick.addEventListener('click', () => launchUserProfileInspector(data.user));
